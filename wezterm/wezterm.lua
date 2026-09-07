@@ -5,7 +5,7 @@ local config = wezterm.config_builder()
 config.enable_scroll_bar = false
 config.enable_tab_bar = false
 config.window_padding = { left = "0px", right = "0px", top = "0px", bottom = "0px" }
-config.font_size = 12
+config.font_size = 14
 config.line_height = 1
 config.font = wezterm.font_with_fallback({
  { family = "OUT", weight = "Regular" },
