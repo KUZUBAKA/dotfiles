@@ -1,6 +1,0 @@
-require("system")
-require("style")
-require("keymaps")
-require("config.lazy")
-require("out_night").setup(true)
-require("command_for_dependent_plugins")
