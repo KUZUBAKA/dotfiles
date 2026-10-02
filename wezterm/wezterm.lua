@@ -5,17 +5,17 @@ local config = wezterm.config_builder()
 config.enable_scroll_bar = false
 config.enable_tab_bar = false
 config.window_padding = { left = "0px", right = "0px", top = "0px", bottom = "0px" }
-config.font_size = 16
-config.line_height = 1
+config.font_size = 18
+config.line_height = 0.90
 config.font = wezterm.font_with_fallback({
- { family = "OUT", weight = "Regular" },
+ { family = "OUT", weight = 300 },
 })
 
 config.background = {
  {
   source = { File = wezterm.home_dir .. "/Wallpapers/東方/6.png" },
   hsb = {
-   brightness = 0.03,
+   brightness = 0.022,
    hue = 1.0,
    saturation = 1.0,
   },
@@ -23,27 +23,48 @@ config.background = {
  },
 }
 
-config.custom_block_glyphs = true
-config.anti_alias_custom_block_glyphs = true
-
 config.cell_widths = {
- -- 句読点系の曖昧幅記号：‐ - ‒ – — ― ‖ ‘ ’ “ ” † ‡ • … ‰ ′ ″ ※ ‼ など
- -- { first = 0x2010, last = 0x2027, width = 2 },
- -- { first = 0x2030, last = 0x205E, width = 2 },
+ -- Latin-1 系の曖昧幅記号：± × ÷ ° など
+ { first = 0x00A1, last = 0x00A1, width = 2 },
+ { first = 0x00A4, last = 0x00A4, width = 2 },
+ { first = 0x00A7, last = 0x00A8, width = 2 },
+ { first = 0x00AA, last = 0x00AA, width = 2 },
+ { first = 0x00AC, last = 0x00AC, width = 2 },
+ { first = 0x00AE, last = 0x00BA, width = 2 },
+ { first = 0x00BC, last = 0x00BF, width = 2 },
+ { first = 0x00D7, last = 0x00D7, width = 2 },
+ { first = 0x00F7, last = 0x00F7, width = 2 },
 
- -- 矢印・数学記号：← → ⇒ ⇔ ∀ ∂ ∞ ≠ ≤ ≥ など
- { first = 0x2190, last = 0x22FF, width = 2 },
+ -- ※ (… は 1 マスのまま)
+ { first = 0x203B, last = 0x203B, width = 2 },
 
- -- 技術記号・電源記号：⌘ ⌥ ⏻ ⏼ ⏽ ⏾ など
- { first = 0x2300, last = 0x23FF, width = 2 },
+ -- ℃ ℉ № ™ Ω Å
+ { first = 0x2103, last = 0x2103, width = 2 },
+ { first = 0x2109, last = 0x2109, width = 2 },
+ { first = 0x2116, last = 0x2116, width = 2 },
+ { first = 0x2122, last = 0x2122, width = 2 },
+ { first = 0x2126, last = 0x2126, width = 2 },
+ { first = 0x212B, last = 0x212B, width = 2 },
+
+ -- 矢印・数学記号・技術記号：← → ⇒ ∀ ≠ ⌘ ⏻ など
+ { first = 0x2190, last = 0x23FF, width = 2 },
 
  -- 丸数字・囲み文字：① ② ⓪ など
  { first = 0x2460, last = 0x24FF, width = 2 },
 
- -- 図形・天気・装飾記号：■ □ ● ○ ◆ ◇ ★ ☆ ♨ ⚠ ✓ ✔ ➡ など
- -- 2500-257F の罫線は含めない
- { first = 0x25A0, last = 0x27BF, width = 2 },
+ -- 図形・天気・装飾・チェック・補助矢印：■ ● ★ ⚠ ✓ ➡ など
+ -- 罫線 2500-259F と点字 2800-28FF は入れない
+ { first = 0x25A0, last = 0x27FF, width = 2 },
+ { first = 0x2900, last = 0x2BFF, width = 2 },
+
+ -- Nerd Fonts (Powerline の区切り E0B0-E0BF は入れない)
+ { first = 0xE000, last = 0xE0AF, width = 2 },
+ { first = 0xE0C0, last = 0xF8FF, width = 2 },
+ { first = 0xF0000, last = 0xF1FFF, width = 2 },
 }
+
+config.custom_block_glyphs = true
+config.anti_alias_custom_block_glyphs = true
 
 -- BackEnd
 wezterm.log_info("CONFIG FILE = " .. wezterm.config_file)
