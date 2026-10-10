@@ -5,17 +5,17 @@ local config = wezterm.config_builder()
 config.enable_scroll_bar = false
 config.enable_tab_bar = false
 config.window_padding = { left = "0px", right = "0px", top = "0px", bottom = "0px" }
-config.font_size = 18
+config.font_size = 25
 config.line_height = 1
 config.font = wezterm.font_with_fallback({
- { family = "OUT", weight = 300 },
+ { family = "OUT", weight = 500 },
 })
 
 config.background = {
  {
-  source = { File = wezterm.home_dir .. "/Wallpapers/東方/6.png" },
+  source = { File = wezterm.home_dir .. "/Wallpapers/東方/12.jpeg" },
   hsb = {
-   brightness = 0.022,
+   brightness = 0.10,
    hue = 1.0,
    saturation = 1.0,
   },
