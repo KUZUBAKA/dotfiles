@@ -5,15 +5,24 @@ local config = wezterm.config_builder()
 config.enable_scroll_bar = false
 config.enable_tab_bar = false
 config.window_padding = { left = "0px", right = "0px", top = "0px", bottom = "0px" }
-config.font_size = 30
+config.font_size = 20
 config.line_height = 1
 config.font = wezterm.font_with_fallback({
  { family = "OUT", weight = 400 },
 })
 
+local theme_name = 'Tokyo Night'
+config.color_scheme = theme_name
+
+local scheme = wezterm.get_builtin_color_schemes()[theme_name]
+if scheme then
+ scheme.brights[1] = '#ffd869' 
+ config.colors = scheme
+end
+
 config.background = {
  {
-  source = { File = wezterm.home_dir .. "/Wallpapers/東方/12.jpeg" },
+  source = { File = wezterm.home_dir .. "/Wallpapers/東方/9.png" },
   hsb = {
    brightness = 0.10,
    hue = 1.0,
