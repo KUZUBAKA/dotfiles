@@ -22,9 +22,11 @@ end
 
 config.background = {
  {
-  source = { File = wezterm.home_dir .. "/Wallpapers/東方/9.png" },
+  source = { File = wezterm.home_dir .. "/Wallpapers/東方/スマホ用/4.png" },
+  vertical_offset = -120,
+  horizontal_offset = 10,
   hsb = {
-   brightness = 0.10,
+   brightness = 0.06,
    hue = 1.0,
    saturation = 1.0,
   },
