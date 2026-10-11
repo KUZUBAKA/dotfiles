@@ -1,0 +1,193 @@
+import "DaVinci Resolve"
+
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Activate{ index = 9 } := 
+FusionWidget.fuHotkey_FuFrame_Comp_Choose_Tool := 
+FusionWidget.fuHotkey_FuFrame_Time_Step_Back := 
+photo.photoStarRating0 := 
+FusionWidget.fuHotkey_GLViewer_Viewer_Channel{chan = 3, toggle = true} := 
+sessionVersionAdd := 
+FusionWidget.fuHotkey_FuFrame_ACTION_SHOW_CONSOLE := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Activate{ index = 3 } := 
+FusionWidget.fuHotkey_TimelineView_View_Zoom_Rectangle := 
+FusionWidget.fuHotkey_FuFrame_App_Help := 
+FusionWidget.fuHotkey_FuFrame_Fusion_View_Show{ view = 'Keyframes' } := Ctrl+F
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Store{ index = 9 } := 
+FusionWidget.fuHotkey_GLView_Viewer_Buffer{ index = 2 } := 
+resolveCustomizedActions := 
+sessionVersionDefault := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Store{ index = 10 } := 
+FusionWidget.fuHotkey_SplineEditorView_View_Zoom_Rectangle := 
+sessionGradeFromOneClipPrior := 
+FusionWidget.fuHotkey_FuFrame_Tool_ViewOn{ index = 1 } := 
+nodesAddParallel := 
+FusionWidget.fuHotkey_GLPreview_Playback_Seek{frames = 10} := 
+nodesAddPPW := 
+photo.photoFlipHorizontal := 
+FusionWidget.fuHotkey_FlowView_Flow_Go_To_Bookmark { index = 2 } := 
+FusionWidget.fuHotkey_FlowView_Flow_Go_To_Bookmark { index = 8 } := 
+viewStillsStillGrab := 
+fairlightToggleGroupAllStatus := 
+FusionWidget.fuHotkey_FuFrame_Frame_Activate_Prev := 
+viewZoomSubZoomIn := Ctrl+^
+FusionWidget.fuHotkey_GLView_Viewer_Buffer{ index = 0 } := 
+nodesNext := 
+resolveQuit := 
+FusionWidget.fuHotkey_FlowView_Flow_Go_To_Bookmark { index = 4 } := 
+photo.photoStarRating3 := 
+fairlightToggleGroup1Status := 
+FusionWidget.fuHotkey_SplineControl_View_Zoom_Rectangle := 
+FusionWidget.fuHotkey_Fusion_Expose_Tool_Name_Mode := 
+FusionWidget.fuHotkey_GLView_Viewer_Scale_Abs{ scale=0 } := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Store{ index = 8 } := 
+FusionWidget.fuHotkey_FuFrame_Time_Goto_RenderEnd := 
+FusionWidget.fuHotkey_FuFrame_Tool_ViewOn{ index = 4 } := 
+FusionWidget.fuHotkey_FlowView_Flow_Go_To_Bookmark { index = 9 } := 
+fairlightToggleGroup2Status := 
+FusionWidget.fuHotkey_GL3DViewer_Viewer_3D_FitSelected := 
+FusionWidget.fuHotkey_GLViewer_Viewer_Guides_Show := 
+FusionWidget.fuHotkey_FuFrame_Tool_ViewOn{ index = 6 } := 
+FusionWidget.fuHotkey_GLView_Viewer_SubView_Enable := 
+fairlightToggleGroup4Status := 
+sessionTrackStop := 
+sessionGrabLiveGradeFrame := 
+PhotoInspector.Context_removeAndResetEffects := 
+FusionWidget.fuHotkey_SplineEditorView_View_Zoom_In := 
+FusionWidget.fuHotkey_GLView_Viewer_Scale_Rel{ scale=0·70710678118654752440084436210485 } := 
+sessionLiveGrade := 
+FusionWidget.fuHotkey_GLImageViewer_Viewer_Layer_Change{ relindex = -1 } := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Store{ index = 3 } := 
+FusionWidget.fuHotkey_SplineEditorView_View_Zoom_Out := 
+FusionWidget.fuHotkey_GLViewer_Viewer_Channel{chan = 12, toggle = true} := 
+FusionWidget.fuHotkey_GL3DViewer_Viewer_3D_FitAll := 
+FusionWidget.fuHotkey_FlowView_Flow_Go_To_Bookmark { index = 5 } := 
+FusionWidget.fuHotkey_FuFrame_Fusion_View_Show{ view = 'Nodes' } := 
+FusionWidget.fuHotkey_TimelineView_View_Zoom_Fit := 
+fairlightToggleGroup6Status := 
+fairlightToggleGroup9Status := 
+trimEditSelectionMode := 
+FusionWidget.fuHotkey_FuFrame_Time_Goto_RenderStart := 
+FusionWidget.fuHotkey_GLPreview_Playback_Seek_Start := 
+viewStillsStillNext := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Activate{ index = 10 } := 
+fairlightToggleGroup8Status := 
+FusionWidget.fuHotkey_GLViewer_Viewer_Controls_Show := 
+FusionWidget.fuHotkey_SplineControl_View_Zoom_In := 
+FusionWidget.fuHotkey_GLView_Viewer_Buffer{ index = 1 } := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Store{ index = 6 } := 
+sessionLiveGradePause := 
+FusionWidget.fuHotkey_FlowView_Flow_Add_Bookmark := 
+viewStillsStillPlay := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Activate{ index = 2 } := 
+photo.photoTagGoodTake := 
+FusionWidget.fuHotkey_GLPreview_Playback_Seek_End := 
+sessionVersionPrev := 
+FusionWidget.fuHotkey_GLView_Viewer_QuadView := 
+FusionWidget.fuHotkey_GLView_Viewer_Scale_Rel{ scale=1·4142135623730950488016887242097 } := 
+photo.photoStarRating1 := 
+viewTimelineWipeOneFrameReverse := 
+FusionWidget.fuHotkey_GLPreview_Playback_Seek{frames = -1} := 
+FusionWidget.fuHotkey_FuFrame_Tool_ViewOn{ index = 3 } := 
+FusionWidget.fuHotkey_GLViewer_Viewer_Channel{chan = -1, toggle = true} := 
+photo.controlClipNext := 
+FusionWidget.fuHotkey_FuFrame_View_Show{ id = 'ModifierView' } := 
+FusionWidget.fuHotkey_GLViewer_Viewer_Channel{chan = 2, toggle = true} := 
+nodesExtractCurrent := 
+FusionWidget.fuHotkey_FuFrame_Tool_ViewOn{ index = 8 } := 
+FusionWidget.fuHotkey_FuFrame_Time_Step_PrevKey := 
+photo.photoTagRejected := 
+fairlightToggleGroup7Status := 
+fairlightToggleGroup3Status := 
+fairlightToggleGroup5Status := 
+FusionWidget.fuHotkey_FuFrame_Fusion_View_Show{ view = 'Spline' } := 
+nodesAddPCW := 
+editBladeRazor := W
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Activate{ index = 1 } := 
+nodesAddSplitterCombiner := 
+FusionWidget.fuHotkey_TimelineView_View_Zoom_In := 
+photo.photoRotateLeft := 
+FusionWidget.fuHotkey_GLView_Viewer_SubView_Swap := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Store{ index = 7 } := 
+FusionWidget.fuHotkey_GLImageViewer_Viewer_Layer_Change{ relindex =  1 } := 
+FusionWidget.fuHotkey_FuFrame_Tool_ViewClear := 
+photo.photoCapture := 
+FusionWidget.fuHotkey_FuFrame_Playback_Mode{ play = true, reverse = false} := 
+photo.photoToggleViewerControls := 
+FusionWidget.fuHotkey_FuFrame_View_Show{ id = 'ControlView' } := 
+PhotoInspector.Context_resetEffects := 
+FusionWidget.fuHotkey_FuFrame_Playback_Mode{ play = false} := 
+photo.photoStarRating4 := 
+FusionWidget.fuHotkey_FuFrame_Tool_ViewOn{ index = 2 } := 
+FusionWidget.fuHotkey_FlowView_Flow_Go_To_Bookmark { index = 1 } := 
+FusionWidget.fuHotkey_SplineControl_View_Zoom_Fit := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Store{ index = 5 } := 
+nodesToggleCurrent := 
+FusionWidget.fuHotkey_GLImageViewer_Viewer_Layer{ layer = ':Default' } := 
+FusionWidget.fuHotkey_FlowView_Flow_Go_To_Bookmark { index = 3 } := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Store{ index = 4 } := 
+nodesAddCPW := 
+sessionTrackOneFrameReverse := 
+FusionWidget.fuHotkey_FuFrame_Tool_ViewOn{ index = 9 } := 
+FusionWidget.fuHotkey_SplineEditorView_View_Zoom_Fit := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Store{ index = 2 } := 
+sessionPrinterLightsEnable := 
+FusionWidget.fuHotkey_TimelineView_Time_Goto_Key_Next := 
+FusionWidget.fuHotkey_GLPreview_Playback_Seek{frames = -10} := 
+FusionWidget.fuHotkey_GLView_Viewer_Lock := 
+nodesPrevious := 
+sessionOriginalMemory := 
+photo.photoFlipVertical := 
+FusionWidget.fuHotkey_TimelineView_View_Zoom_Out := 
+FusionWidget.fuHotkey_FuFrame_Frame_Activate_Next := 
+FusionWidget.fuHotkey_GLView_Viewer_Tools_Disable := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Activate{ index = 7 } := 
+FusionWidget.fuHotkey_GLView_Viewer_Reset{ scale = 2·0 } := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Activate{ index = 6 } := 
+nodesAddSerial := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Store{ index = 1 } := 
+sessionVersionNext := 
+sessionTrackOneFrameForward := 
+FusionWidget.fuHotkey_FlowView_Flow_Go_To_Bookmark { index = 7 } := 
+sessionTrackForward := 
+nodesToggleAll := 
+FusionWidget.fuHotkey_FuFrame_Tool_ViewOn{ index = 7 } := 
+PhotoInspector.Context_removeEffects := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Activate{ index = 8 } := 
+FusionWidget.fuHotkey_GLView_Viewer_Reset := 
+viewTimelineWipeOneFrameForward := 
+FusionWidget.fuHotkey_GLViewer_Viewer_Channel{chan = 0, toggle = true} := 
+editToggleDynamicTrimMode := 
+sessionGradeFromTwoClipsPrior := 
+photo.photoStarRating2 := 
+photo.photoRotateRight := 
+FusionWidget.fuHotkey_Fusion_Console_Show{} := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Activate{ index = 5 } := 
+nodesAddLayer := 
+FusionWidget.fuHotkey_FuFrame_Time_Step_Forward := 
+FusionWidget.fuHotkey_GLPreview_Playback_Seek{frames = 1} := 
+FusionWidget.fuHotkey_FuFrame_Tool_ViewOn{ index = 5 } := 
+FusionWidget.fuHotkey_FuFrame_Playback_Mode{ play = true, reverse = true} := 
+fairlightCreateGroup := 
+FusionWidget.fuHotkey_SplineControl_View_Zoom_Out := 
+FusionWidget.fuHotkey_FuFrame_Time_Goto_GlobalEnd := 
+KeyframeEditorWidget.markKeyframeDelete := X
+FusionWidget.fuHotkey_FuFrame_Time_Goto_GlobalStart := 
+sessionTrackReverse := 
+FusionWidget.fuHotkey_FlowView_Flow_Go_To_Bookmark := 
+nodesAppend := 
+FusionWidget.fuHotkey_SplineEditorView_Time_Goto_Key_Prev := 
+FusionWidget.fuHotkey_SplineEditorView_Time_Goto_Key_Next := 
+FusionWidget.fuHotkey_TimelineView_Time_Goto_Key_Prev := 
+FusionWidget.fuHotkey_FuFrame_Tool_Settings_Activate{ index = 4 } := 
+nodesAddBefore := 
+FusionWidget.fuHotkey_GLViewer_Viewer_Channel{chan = 1, toggle = true} := 
+viewStillsStillPrev := 
+editDelete := S
+FusionWidget.fuHotkey_GL3DViewer_Viewer_3D_CentreSelected := 
+FusionWidget.fuHotkey_FlowView_Flow_Go_To_Bookmark { index = 6 } := 
+fairlightToggleSuspendGroups := 
+FusionWidget.fuHotkey_FuFrame_Time_Step_NextKey := 
+FusionWidget.fuHotkey_FuFrame_Comp_Choose_Action := 
+KeyframeEditorWidget.markKeyframeMakeDynamic := Ctrl+F
+FusionWidget.fuHotkey_GLView_Viewer_Unview_All := 
+nodesAddLPW := 
+photo.photoStarRating5 := 
