@@ -22,11 +22,11 @@ end
 
 config.background = {
  {
-  source = { File = wezterm.home_dir .. "/WallPapers/東方/スマホ用/4.png" },
-  vertical_offset = -120,
-  horizontal_offset = 10,
+  source = { File = wezterm.home_dir .. "/WallPapers/ブルアカ/335.png" },
+  -- vertical_offset = -120,
+  -- horizontal_offset = 10,
   hsb = {
-   brightness = 0.06,
+   brightness = 0.15,
    hue = 1.0,
    saturation = 1.0,
   },
@@ -79,6 +79,11 @@ config.anti_alias_custom_block_glyphs = true
 
 -- BackEnd
 wezterm.log_info("CONFIG FILE = " .. wezterm.config_file)
+
+wezterm.on('gui-startup', function(cmd)
+ local tab, pane, window = wezterm.mux.spawn_window(cmd or {})
+ window:gui_window():maximize()
+end)
 
 config.unicode_version = 14
 config.freetype_render_target = "HorizontalLcd"
