@@ -22,7 +22,8 @@ end
 
 config.background = {
  {
-  source = { File = wezterm.home_dir .. "/WallPapers/ブルアカ/328.png" },
+  -- source = { File = wezterm.home_dir .. "/WallPapers/ブルアカ/328.png" },
+  source = { File = wezterm.home_dir .. "/WallPapers/東方/15.png" },
   -- vertical_offset = -120,
   -- horizontal_offset = 10,
   hsb = {
