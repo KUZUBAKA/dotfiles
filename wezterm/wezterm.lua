@@ -23,13 +23,13 @@ end
 config.background = {
  {
   -- source = { File = wezterm.home_dir .. "/WallPapers/ブルアカ/328.png" },
-  source = { File = wezterm.home_dir .. "/WallPapers/東方/15.png" },
+  source = { File = wezterm.home_dir .. "/WallPapers/東方/23.png" },
   -- vertical_offset = -120,
   -- horizontal_offset = 10,
   hsb = {
-   brightness = 0.12,
+   brightness = 0.15,
    hue = 1.0,
-   saturation = 1.0,
+   saturation = 1.8,
   },
   opacity = 1.00,
  },
