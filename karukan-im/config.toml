@@ -1,0 +1,6 @@
+# ライブ変換 オンオフ
+
+live_conversion = false
+
+# サジェスト自動表示
+candidate_window = "conversion"
