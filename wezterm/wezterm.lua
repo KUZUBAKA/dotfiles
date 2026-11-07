@@ -5,7 +5,7 @@ local config = wezterm.config_builder()
 config.enable_scroll_bar = false
 config.enable_tab_bar = false
 config.window_padding = { left = "0px", right = "0px", top = "0px", bottom = "0px" }
-config.font_size = 22
+config.font_size = 18
 config.line_height = 1
 config.font = wezterm.font_with_fallback({
  { family = "OUT", weight = 400 },
@@ -27,7 +27,7 @@ config.background = {
   -- vertical_offset = -120,
   -- horizontal_offset = 10,
   hsb = {
-   brightness = 0.08,
+   brightness = 0.06,
    hue = 1.0,
    saturation = 1.8,
   },
