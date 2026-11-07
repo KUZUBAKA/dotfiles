@@ -1,6 +1,11 @@
+[conversion]
 # ライブ変換 オンオフ
-
 live_conversion = false
 
+[display]
 # サジェスト自動表示
 candidate_window = "conversion"
+
+[learning]
+# 学習を有効にするか
+enabled = true
