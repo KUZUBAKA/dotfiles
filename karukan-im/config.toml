@@ -8,4 +8,4 @@ candidate_window = "conversion"
 
 [learning]
 # 学習を有効にするか
-enabled = true
+enabled = false
