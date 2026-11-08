@@ -1,11 +1,21 @@
 [conversion]
 # ライブ変換 オンオフ
-live_conversion = false
+live_conversion = true
+# 文字入力で変換確定
+commit_on_input = true
+# ペルソナの設定 20文字以内最大25文字
+persona = "小説執筆用。キャラ名は「リリ」等のカタカナを重視"
+# 使用可能なスレッド
+n_threads = 6
 
 [display]
 # サジェスト自動表示
 candidate_window = "conversion"
 
 [learning]
-# 学習を有効にするか
-enabled = false
+# 学習を有効にするか (~/.local/share/karukan-im/learning.tsvに保存される)
+enabled = true
+# 覚える数の上限 最大10000上限
+max_entries = 10000
+# 覚える変換の内容の一記憶の上限文字数 50上限
+max_surface_chars = 10
