@@ -15,10 +15,12 @@
 #   4. ウィンドウごとに辞書を読み直さず、1つの辞書を全ウィンドウで共有する
 #      （メモリの節約と、新しいウィンドウで最初の1文字目が固まるのを防ぐ）
 #   5. 大きなシステム辞書を読み込めるよう、読み込みの上限を引き上げる
+#   6. Space の候補に、AI の文の中の1語だけを辞書の別の書き方に入れかえた候補を足す
+#      （何々の旅に → 何々の度に、できていない → 出来ていない）
 set -euo pipefail
 
 readonly KZ_VERSION="1854827"
-readonly PATCH_SHA256="9ba5ff33a4130a7f57170939d90fc658b549fd863485320defcb064b2a2cd79f"
+readonly PATCH_SHA256="8c504b29d20da0aad94b0ce715c6aa6ae5154fdd6af995037e40f91ceb4f9d2d"
 readonly WORK_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/karukan-kz"
 
 say()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
@@ -55,6 +57,44 @@ cd "$WORK_DIR"
 
 say "パッチを書き出しています（$WORK_DIR）"
 cat > karukan-kz.patch <<'PATCH_EOF'
+From 340dba0b6360217434ab557a7b5a8a74c0bc73b2 Mon Sep 17 00:00:00 2001
+From: karukan-patch <noreply@example.invalid>
+Date: Sat, 7 Nov 2026 23:12:11 +0900
+Subject: [PATCH] =?UTF-8?q?karukan-kz:=20commit=5Fon=5Finput,=20=E7=84=A1?=
+ =?UTF-8?q?=E5=A4=89=E6=8F=9B=20kana=20switching,=20exact-before-predictiv?=
+ =?UTF-8?q?e=20ranking,=20shared=20dictionaries,=20larger=20dict=20limits,?=
+ =?UTF-8?q?=20word=20swaps?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ karukan-engine/src/dict.rs                    |   6 +-
+ karukan-im/core/config/default.toml           |   6 +
+ karukan-im/core/src/config/settings.rs        |  24 +++
+ karukan-im/core/src/core/candidate.rs         |   5 +
+ karukan-im/core/src/core/engine/conversion.rs |  90 ++++++++-
+ karukan-im/core/src/core/engine/init.rs       | 123 +++++++++----
+ karukan-im/core/src/core/engine/mod.rs        |  10 +
+ karukan-im/core/src/core/engine/mode.rs       |  87 +++++++++
+ karukan-im/core/src/core/engine/swap.rs       | 141 ++++++++++++++
+ .../src/core/engine/tests/commit_on_input.rs  | 173 ++++++++++++++++++
+ karukan-im/core/src/core/engine/tests/mod.rs  |   9 +-
+ .../core/src/core/engine/tests/muhenkan.rs    | 128 +++++++++++++
+ .../core/src/core/engine/tests/rewriter.rs    |   2 +-
+ .../src/core/engine/tests/shared_dicts.rs     |  75 ++++++++
+ .../src/core/engine/tests/user_dict_order.rs  |  78 ++++++++
+ .../core/src/core/engine/tests/word_swap.rs   |  61 ++++++
+ karukan-im/core/src/core/engine/types.rs      |  17 +-
+ karukan-im/core/src/core/keycode.rs           |   2 +
+ 18 files changed, 988 insertions(+), 49 deletions(-)
+ create mode 100644 karukan-im/core/src/core/engine/swap.rs
+ create mode 100644 karukan-im/core/src/core/engine/tests/commit_on_input.rs
+ create mode 100644 karukan-im/core/src/core/engine/tests/muhenkan.rs
+ create mode 100644 karukan-im/core/src/core/engine/tests/shared_dicts.rs
+ create mode 100644 karukan-im/core/src/core/engine/tests/user_dict_order.rs
+ create mode 100644 karukan-im/core/src/core/engine/tests/word_swap.rs
+
 diff --git a/karukan-engine/src/dict.rs b/karukan-engine/src/dict.rs
 index 957905d..f9a5d26 100644
 --- a/karukan-engine/src/dict.rs
@@ -155,7 +195,7 @@ index a4e7f0b..dc2266a 100644
      pub fn set_cursor(&mut self, cursor: usize) {
          self.cursor = cursor.min(self.candidates.len().saturating_sub(1));
 diff --git a/karukan-im/core/src/core/engine/conversion.rs b/karukan-im/core/src/core/engine/conversion.rs
-index 61f8714..10ea866 100644
+index 61f8714..cf2c16a 100644
 --- a/karukan-im/core/src/core/engine/conversion.rs
 +++ b/karukan-im/core/src/core/engine/conversion.rs
 @@ -332,7 +332,17 @@ impl InputMethodEngine {
@@ -177,8 +217,21 @@ index 61f8714..10ea866 100644
              builder.push(ac);
          }
  
-@@ -352,8 +362,13 @@ impl InputMethodEngine {
+@@ -347,13 +357,26 @@ impl InputMethodEngine {
+                 ));
              }
+         } else {
++            // One word of the model's best sentence, swapped for its other
++            // dictionary spellings (何々の旅に → 何々の度に). The dictionaries
++            // below only match the whole reading, so inside a sentence these
++            // are the only dictionary alternatives there are.
++            let swaps = self.word_swap_candidates(reading, &candidates[0]);
+             for text in candidates {
+                 builder.push(AnnotatedCandidate::new(text, CandidateSource::Model));
+             }
++            for text in swaps {
++                builder.push(AnnotatedCandidate::new(text, CandidateSource::Dictionary));
++            }
          }
  
 -        // 4. System dictionary candidates
@@ -193,7 +246,7 @@ index 61f8714..10ea866 100644
              builder.push(ac);
          }
  
-@@ -650,10 +665,14 @@ impl InputMethodEngine {
+@@ -650,10 +673,14 @@ impl InputMethodEngine {
                      }
                  }
  
@@ -211,7 +264,7 @@ index 61f8714..10ea866 100644
                      return self.refine_through_composing(key);
                  }
  
-@@ -665,6 +684,57 @@ impl InputMethodEngine {
+@@ -665,6 +692,57 @@ impl InputMethodEngine {
          }
      }
  
@@ -422,10 +475,18 @@ index addd840..9dafaab 100644
 +    Some(dict)
  }
 diff --git a/karukan-im/core/src/core/engine/mod.rs b/karukan-im/core/src/core/engine/mod.rs
-index 6c6179e..b4b3369 100644
+index 6c6179e..61700a2 100644
 --- a/karukan-im/core/src/core/engine/mod.rs
 +++ b/karukan-im/core/src/core/engine/mod.rs
-@@ -619,6 +619,15 @@ impl InputMethodEngine {
+@@ -15,6 +15,7 @@ mod input_buffer;
+ mod mode;
+ mod model;
+ mod strategy;
++mod swap;
+ mod types;
+ 
+ pub use types::*;
+@@ -619,6 +620,15 @@ impl InputMethodEngine {
              return EngineResult::not_consumed();
          }
  
@@ -537,6 +598,153 @@ index f9bade7..9739eb6 100644
 +        }
 +    }
  }
+diff --git a/karukan-im/core/src/core/engine/swap.rs b/karukan-im/core/src/core/engine/swap.rs
+new file mode 100644
+index 0000000..c7ee615
+--- /dev/null
++++ b/karukan-im/core/src/core/engine/swap.rs
+@@ -0,0 +1,141 @@
++//! Word-swap candidates: dictionary alternatives for one word inside the
++//! model's sentence.
++//!
++//! The dictionaries are only ever looked up with the whole reading, so for
++//! a sentence like 「なになにのたびに」 they contribute nothing and the
++//! model's few beams are all there is: when none of them says 度に, no
++//! number of Space presses reaches it. Here the model's best sentence is
++//! aligned with the reading from the end — the hiragana they share is
++//! kept as-is — and the word right before that shared tail is looked up
++//! on its own. When the sentence spells that word with one of the
++//! dictionary's surfaces (or leaves it in kana), every other surface of
++//! the word yields a candidate: 何々の旅に → 何々の度に, 何々の足袋に, …;
++//! できていない → 出来ていない.
++
++use super::*;
++
++/// Longest shared hiragana tail kept verbatim (okurigana and particles:
++/// に, ていない, …).
++const MAX_TAIL_CHARS: usize = 6;
++/// Word lengths tried before the tail. One-char readings are left out:
++/// they are mostly particles, and swapping those makes noise (旅に → 旅二).
++const MIN_WORD_CHARS: usize = 2;
++const MAX_WORD_CHARS: usize = 8;
++/// Surfaces taken per matched word, and candidates produced in total.
++const MAX_SURFACES_PER_WORD: usize = 6;
++const MAX_SWAPS: usize = 12;
++
++fn is_hiragana(c: char) -> bool {
++    matches!(c, '\u{3041}'..='\u{309F}' | 'ー')
++}
++
++impl InputMethodEngine {
++    /// Candidates made from `sentence` (the model's best conversion of
++    /// `reading`) by swapping one word for its other dictionary spellings.
++    /// The user dictionary is consulted before the system one.
++    pub(super) fn word_swap_candidates(&self, reading: &str, sentence: &str) -> Vec<String> {
++        let dicts: Vec<&Dictionary> = [self.dicts.user.as_deref(), self.dicts.system.as_deref()]
++            .into_iter()
++            .flatten()
++            .collect();
++        word_swaps(&dicts, reading, sentence)
++    }
++}
++
++/// The pure part of [`InputMethodEngine::word_swap_candidates`].
++pub(crate) fn word_swaps(dicts: &[&Dictionary], reading: &str, sentence: &str) -> Vec<String> {
++    let r: Vec<char> = reading.chars().collect();
++    let s: Vec<char> = sentence.chars().collect();
++    if dicts.is_empty() || r.len() < MIN_WORD_CHARS || s.is_empty() {
++        return Vec::new();
++    }
++
++    // How much hiragana the reading and the sentence end with in common.
++    let mut shared = 0;
++    while shared < r.len()
++        && shared < s.len()
++        && r[r.len() - 1 - shared] == s[s.len() - 1 - shared]
++        && is_hiragana(r[r.len() - 1 - shared])
++    {
++        shared += 1;
++    }
++
++    let mut out: Vec<String> = Vec::new();
++    // The longest kept tail first: it puts the swapped word right after
++    // the converted part (できて|いない → でき|ていない), where the model
++    // most often leaves a word in kana or picks the wrong homophone.
++    for tail_len in (0..=shared.min(MAX_TAIL_CHARS)).rev() {
++        let r_head = &r[..r.len() - tail_len];
++        let s_head = &s[..s.len() - tail_len];
++        let tail: String = r[r.len() - tail_len..].iter().collect();
++        let max_word = MAX_WORD_CHARS.min(r_head.len());
++        for word_len in (MIN_WORD_CHARS..=max_word).rev() {
++            let word: String = r_head[r_head.len() - word_len..].iter().collect();
++            for dict in dicts {
++                let Some(found) = dict.exact_match_search(&word) else {
++                    continue;
++                };
++                let surfaces: Vec<&str> = found
++                    .candidates
++                    .iter()
++                    .map(|c| c.surface.as_str())
++                    .collect();
++                // The spelling the sentence used for this word: one of the
++                // dictionary's, or the kana itself. The shortest match wins: a
++                // given-name entry may also hold the full name (シロコ, 砂狼シロコ),
++                // and only the short one lines up with the word.
++                let spelled = surfaces
++                    .iter()
++                    .copied()
++                    .chain(std::iter::once(word.as_str()))
++                    .filter(|m| !m.is_empty() && ends_with(s_head, m))
++                    .min_by_key(|m| m.chars().count());
++                let Some(spelled) = spelled else {
++                    continue;
++                };
++                let head: String = s_head[..s_head.len() - spelled.chars().count()]
++                    .iter()
++                    .collect();
++                for surface in surfaces.iter().take(MAX_SURFACES_PER_WORD) {
++                    if *surface == spelled || !is_word(surface) || overlaps(&head, surface) {
++                        continue;
++                    }
++                    let candidate = format!("{head}{surface}{tail}");
++                    if candidate != sentence && !out.contains(&candidate) {
++                        out.push(candidate);
++                        if out.len() >= MAX_SWAPS {
++                            return out;
++                        }
++                    }
++                }
++            }
++        }
++    }
++    out
++}
++
++/// Only plain words take part: entries like 「霊夢の天下とったるで!」 or
++/// 「円卓（円卓）」 are jokes and glosses, not spellings.
++fn is_word(surface: &str) -> bool {
++    surface.chars().all(|c| {
++        matches!(c,
++            '\u{3041}'..='\u{309F}' | '\u{30A1}'..='\u{30FF}' | '\u{4E00}'..='\u{9FFF}'
++            | '\u{3400}'..='\u{4DBF}' | '々' | '〆'
++            | 'a'..='z' | 'A'..='Z' | '0'..='9' | 'ａ'..='ｚ' | 'Ａ'..='Ｚ' | '０'..='９')
++    })
++}
++
++/// A surface that repeats what the sentence already says right before it:
++/// a given-name entry spelled as the full name (しろこ → 砂狼シロコ) after
++/// the family name would read 砂狼砂狼シロコ.
++fn overlaps(head: &str, surface: &str) -> bool {
++    let head: Vec<char> = head.chars().collect();
++    let surface: Vec<char> = surface.chars().collect();
++    (2..=head.len().min(surface.len().saturating_sub(1)))
++        .any(|n| head[head.len() - n..] == surface[..n])
++}
++
++fn ends_with(text: &[char], suffix: &str) -> bool {
++    let suffix: Vec<char> = suffix.chars().collect();
++    suffix.len() <= text.len() && text[text.len() - suffix.len()..] == suffix[..]
++}
 diff --git a/karukan-im/core/src/core/engine/tests/commit_on_input.rs b/karukan-im/core/src/core/engine/tests/commit_on_input.rs
 new file mode 100644
 index 0000000..1c4ceba
@@ -717,7 +925,7 @@ index 0000000..1c4ceba
 +    assert_eq!(engine.input_buf.reading(), "あいか");
 +}
 diff --git a/karukan-im/core/src/core/engine/tests/mod.rs b/karukan-im/core/src/core/engine/tests/mod.rs
-index 098ad3e..a50b0cc 100644
+index 098ad3e..a5c7127 100644
 --- a/karukan-im/core/src/core/engine/tests/mod.rs
 +++ b/karukan-im/core/src/core/engine/tests/mod.rs
 @@ -10,6 +10,7 @@ mod basic;
@@ -728,7 +936,7 @@ index 098ad3e..a50b0cc 100644
  mod conversion;
  mod cursor;
  mod date;
-@@ -18,15 +19,18 @@ mod katakana;
+@@ -18,16 +19,20 @@ mod katakana;
  mod learning;
  mod live_conversion;
  mod mode_toggle;
@@ -745,9 +953,11 @@ index 098ad3e..a50b0cc 100644
  mod surrounding;
 +mod user_dict_order;
  mod width;
++mod word_swap;
  
  /// Engine seeded with a learning entry `reading → surface`, no kanji model.
-@@ -58,12 +62,12 @@ fn seed_model_cache(engine: &mut InputMethodEngine, katakana: &str, lctx: &str,
+ /// Bypasses `init.rs` (which gates learning on settings + file I/O) and
+@@ -58,12 +63,12 @@ fn seed_model_cache(engine: &mut InputMethodEngine, katakana: &str, lctx: &str,
  }
  
  /// Build a dictionary from inline JSON, hiding the temp-file plumbing.
@@ -1074,6 +1284,73 @@ index 0000000..4caff15
 +    let predictive_at = list.iter().position(|t| t == "星野").expect("completion");
 +    assert!(exact_at < predictive_at, "list: {list:?}");
 +}
+diff --git a/karukan-im/core/src/core/engine/tests/word_swap.rs b/karukan-im/core/src/core/engine/tests/word_swap.rs
+new file mode 100644
+index 0000000..b952572
+--- /dev/null
++++ b/karukan-im/core/src/core/engine/tests/word_swap.rs
+@@ -0,0 +1,61 @@
++//! Word-swap candidates: one word of the model's sentence replaced by its
++//! other dictionary spellings.
++
++use super::super::swap::word_swaps;
++use super::*;
++
++fn dict() -> std::sync::Arc<Dictionary> {
++    dict_from_json(
++        r#"[
++            {"reading":"たび","candidates":[{"surface":"旅","score":1.0},{"surface":"度","score":2.0},{"surface":"足袋","score":3.0}]},
++            {"reading":"でき","candidates":[{"surface":"出来","score":1.0}]},
++            {"reading":"に","candidates":[{"surface":"二","score":1.0}]}
++        ]"#,
++    )
++}
++
++#[test]
++fn swaps_the_word_before_the_shared_kana_tail() {
++    let d = dict();
++    let out = word_swaps(&[&d], "なになにのたびに", "何々の旅に");
++    assert_eq!(
++        out[..2],
++        ["何々の度に".to_string(), "何々の足袋に".to_string()]
++    );
++}
++
++#[test]
++fn spells_a_kana_word_with_the_dictionary() {
++    let d = dict();
++    let out = word_swaps(&[&d], "できていない", "できていない");
++    assert_eq!(out.first().map(String::as_str), Some("出来ていない"));
++}
++
++#[test]
++fn leaves_one_char_readings_alone() {
++    let d = dict();
++    let out = word_swaps(&[&d], "なになにのたびに", "何々の旅に");
++    assert!(!out.iter().any(|c| c.contains('二')), "{out:?}");
++}
++
++#[test]
++fn nothing_when_the_sentence_does_not_spell_the_word() {
++    let d = dict();
++    assert!(word_swaps(&[&d], "たびに", "TABIに").is_empty());
++    assert!(word_swaps(&[], "たびに", "旅に").is_empty());
++}
++
++#[test]
++fn skips_glosses_and_repeated_names() {
++    let d = dict_from_json(
++        r#"[
++            {"reading":"しろこ","candidates":[{"surface":"シロコ","score":1.0},{"surface":"砂狼シロコ","score":2.0},{"surface":"白子","score":3.0}]},
++            {"reading":"えんたく","candidates":[{"surface":"円卓","score":1.0},{"surface":"円卓（円卓）","score":2.0},{"surface":"円タク","score":3.0}]}
++        ]"#,
++    );
++    let out = word_swaps(&[&d], "すなおおかみしろこ", "砂狼シロコ");
++    assert!(out.contains(&"砂狼白子".to_string()), "{out:?}");
++    assert!(!out.iter().any(|c| c.contains("砂狼砂狼")), "{out:?}");
++    let out = word_swaps(&[&d], "えんたく", "円卓");
++    assert_eq!(out, ["円タク".to_string()]);
++}
 diff --git a/karukan-im/core/src/core/engine/types.rs b/karukan-im/core/src/core/engine/types.rs
 index 0f9ba86..aa386ee 100644
 --- a/karukan-im/core/src/core/engine/types.rs
@@ -1140,6 +1417,9 @@ index 2831fbd..2dcd908 100644
  
      // Space
      pub const SPACE: Keysym = Keysym(0x0020);
+-- 
+2.43.0
+
 PATCH_EOF
 echo "$PATCH_SHA256  karukan-kz.patch" | sha256sum --check --quiet \
     || die "書き出したパッチが壊れています。スクリプトをもう一度ダウンロードしてください。"
@@ -1153,6 +1433,7 @@ cat > PKGBUILD <<'PKGBUILD_EOF'
 #     predictive user-dictionary entries no longer outrank the model
 #   - every input context shares one loaded copy of the dictionaries
 #   - larger dictionary load limits, for extended system dictionaries
+#   - word swaps: dictionary spellings for one word inside the model's sentence
 # Based on the AUR karukan-git PKGBUILD by koh11235813.
 pkgname=karukan-kz-git
 pkgver=0
@@ -1229,6 +1510,7 @@ check() {
     cd "$srcdir/karukan"
     cargo test --release --locked -p karukan-im --lib -- core::engine::tests::commit_on_input \
         core::engine::tests::user_dict_order core::engine::tests::shared_dicts \
+        core::engine::tests::word_swap \
         core::engine::tests::muhenkan \
         config::settings::tests::test_commit_on_input_default_and_override \
         --test-threads=1
