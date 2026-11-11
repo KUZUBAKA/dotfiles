@@ -4,7 +4,7 @@ live_conversion = true
 # 文字入力で変換確定
 commit_on_input = true
 # ペルソナの設定 20文字以内最大25文字
-# persona = "ミミ プログラミング 小説 物語 漫画 漢字"
+persona = "ミミ ララ ルル リリ"
 # 使用可能なスレッド
 n_threads = 4
 
