@@ -17,10 +17,14 @@
 #   5. 大きなシステム辞書を読み込めるよう、読み込みの上限を引き上げる
 #   6. Space の候補に、AI の文の中の1語だけを辞書の別の書き方に入れかえた候補を足す
 #      （何々の旅に → 何々の度に、できていない → 出来ていない）
+#   7. 学習した候補のうち、今の読みより長い昔の読み（るる → ルルはその）は AI と辞書の後ろに並べる
+#   8. 打った読みとぴったり同じ読みの候補だけを出す（あ → あわせて は出ない）。設定 prediction
+#   9. ひらがなで打った読みに英字だけの候補を出さない（かい → KAI は出ない）。設定 alphabet_candidates
+#  10. ＠ で始まる読み（＠こいし）は、辞書のキャラクター一覧だけを出す
 set -euo pipefail
 
 readonly KZ_VERSION="1854827"
-readonly PATCH_SHA256="8c504b29d20da0aad94b0ce715c6aa6ae5154fdd6af995037e40f91ceb4f9d2d"
+readonly PATCH_SHA256="76845f88c5f8d7e5b820b7956b1ac10d00a8686971fbcc7fcf3087b5493bd0a3"
 readonly WORK_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/karukan-kz"
 
 say()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
@@ -57,39 +61,47 @@ cd "$WORK_DIR"
 
 say "パッチを書き出しています（$WORK_DIR）"
 cat > karukan-kz.patch <<'PATCH_EOF'
-From 340dba0b6360217434ab557a7b5a8a74c0bc73b2 Mon Sep 17 00:00:00 2001
+From 62929e6d27f75bae03b840d96b003e692077f23b Mon Sep 17 00:00:00 2001
 From: karukan-patch <noreply@example.invalid>
 Date: Sat, 7 Nov 2026 23:12:11 +0900
 Subject: [PATCH] =?UTF-8?q?karukan-kz:=20commit=5Fon=5Finput,=20=E7=84=A1?=
  =?UTF-8?q?=E5=A4=89=E6=8F=9B=20kana=20switching,=20exact-before-predictiv?=
  =?UTF-8?q?e=20ranking,=20shared=20dictionaries,=20larger=20dict=20limits,?=
- =?UTF-8?q?=20word=20swaps?=
+ =?UTF-8?q?=20word=20swaps,=20learned-prefix=20ranking,=20exact-only=20and?=
+ =?UTF-8?q?=20no-Latin=20options,=20=EF=BC=A0=20character=20lookups?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01QBa6wktjmCU1vbnc5GNtCs
 ---
  karukan-engine/src/dict.rs                    |   6 +-
- karukan-im/core/config/default.toml           |   6 +
- karukan-im/core/src/config/settings.rs        |  24 +++
+ karukan-im/core/config/default.toml           |  13 ++
+ karukan-im/core/src/config/settings.rs        |  51 +++++
  karukan-im/core/src/core/candidate.rs         |   5 +
- karukan-im/core/src/core/engine/conversion.rs |  90 ++++++++-
- karukan-im/core/src/core/engine/init.rs       | 123 +++++++++----
+ karukan-im/core/src/core/engine/chunk/mod.rs  |  12 +-
+ karukan-im/core/src/core/engine/conversion.rs | 194 ++++++++++++++++--
+ karukan-im/core/src/core/engine/init.rs       | 123 +++++++----
+ karukan-im/core/src/core/engine/input.rs      |   3 +
  karukan-im/core/src/core/engine/mod.rs        |  10 +
- karukan-im/core/src/core/engine/mode.rs       |  87 +++++++++
- karukan-im/core/src/core/engine/swap.rs       | 141 ++++++++++++++
- .../src/core/engine/tests/commit_on_input.rs  | 173 ++++++++++++++++++
- karukan-im/core/src/core/engine/tests/mod.rs  |   9 +-
- .../core/src/core/engine/tests/muhenkan.rs    | 128 +++++++++++++
+ karukan-im/core/src/core/engine/mode.rs       |  87 ++++++++
+ karukan-im/core/src/core/engine/swap.rs       | 141 +++++++++++++
+ .../src/core/engine/tests/commit_on_input.rs  | 173 ++++++++++++++++
+ .../core/src/core/engine/tests/exact_only.rs  | 174 ++++++++++++++++
+ .../core/src/core/engine/tests/learning.rs    |  40 ++++
+ karukan-im/core/src/core/engine/tests/mod.rs  |  10 +-
+ .../core/src/core/engine/tests/muhenkan.rs    | 128 ++++++++++++
  .../core/src/core/engine/tests/rewriter.rs    |   2 +-
- .../src/core/engine/tests/shared_dicts.rs     |  75 ++++++++
- .../src/core/engine/tests/user_dict_order.rs  |  78 ++++++++
+ .../src/core/engine/tests/shared_dicts.rs     |  75 +++++++
+ .../src/core/engine/tests/user_dict_order.rs  |  78 +++++++
  .../core/src/core/engine/tests/word_swap.rs   |  61 ++++++
- karukan-im/core/src/core/engine/types.rs      |  17 +-
+ karukan-im/core/src/core/engine/types.rs      |  28 ++-
  karukan-im/core/src/core/keycode.rs           |   2 +
- 18 files changed, 988 insertions(+), 49 deletions(-)
+ 22 files changed, 1356 insertions(+), 60 deletions(-)
  create mode 100644 karukan-im/core/src/core/engine/swap.rs
  create mode 100644 karukan-im/core/src/core/engine/tests/commit_on_input.rs
+ create mode 100644 karukan-im/core/src/core/engine/tests/exact_only.rs
  create mode 100644 karukan-im/core/src/core/engine/tests/muhenkan.rs
  create mode 100644 karukan-im/core/src/core/engine/tests/shared_dicts.rs
  create mode 100644 karukan-im/core/src/core/engine/tests/user_dict_order.rs
@@ -120,10 +132,10 @@ index 957905d..f9a5d26 100644
              return Err(DictError::Format(format!(
                  "num_entries too large: {} (max {})",
 diff --git a/karukan-im/core/config/default.toml b/karukan-im/core/config/default.toml
-index 8199f02..f936827 100644
+index 8199f02..9f08d36 100644
 --- a/karukan-im/core/config/default.toml
 +++ b/karukan-im/core/config/default.toml
-@@ -49,6 +49,12 @@ light_model = "jinen-v2-xsmall-q5"
+@@ -49,6 +49,19 @@ light_model = "jinen-v2-xsmall-q5"
  n_threads = 4
  # 起動時にライブ変換を有効にする（Ctrl+Shift+L で実行中も切替可能）
  live_conversion = true
@@ -133,14 +145,21 @@ index 8199f02..f936827 100644
 +# Ctrl+T / Ctrl+R / Ctrl+I で候補を絞り込んでいる間と絵文字入力中は、検索なので
 +# どちらの設定でも読みを伸ばす。
 +commit_on_input = true
++# 打った読みより長い読みの候補（続きの予測）を出すか。
++#   false: 読みがぴったり同じ候補だけを出す（あ → あわせて のような候補は出ない）
++#   true : 辞書と学習から、打った読みで始まる長い読みの候補も出す（Karukan 本来の動き）
++prediction = false
++# ひらがな・カタカナで打った読みに、英字だけの辞書の候補（かい → KAI）を出すか。
++# false で出さない。英字で打ったとき（ローマ字のまま Space など）は関係なく出る。
++alphabet_candidates = false
  # ユーザー辞書: ~/.local/share/karukan-im/user_dicts/ に辞書ファイルを配置（Mozc TSV or KRKN binary）
  
  # 変換モデル。model / light_model はここのキーを参照する。値は 2 通り:
 diff --git a/karukan-im/core/src/config/settings.rs b/karukan-im/core/src/config/settings.rs
-index b54c333..02f5186 100644
+index b54c333..c977e4c 100644
 --- a/karukan-im/core/src/config/settings.rs
 +++ b/karukan-im/core/src/config/settings.rs
-@@ -201,6 +201,11 @@ pub struct ConversionSettings {
+@@ -201,6 +201,18 @@ pub struct ConversionSettings {
      pub n_threads: u32,
      /// Enable live conversion at startup (Ctrl+Shift+L still toggles at runtime)
      pub live_conversion: bool,
@@ -149,10 +168,17 @@ index b54c333..02f5186 100644
 +    /// style). `false` keeps the refine-in-place behaviour. Narrowed source
 +    /// views and the emoji picker always refine.
 +    pub commit_on_input: bool,
++    /// Offer candidates whose reading extends the typed one (predictive
++    /// dictionary and learning completions). `false` keeps only exact
++    /// readings.
++    pub prediction: bool,
++    /// Offer Latin-only dictionary surfaces (かい → KAI) for a reading
++    /// typed in kana.
++    pub alphabet_candidates: bool,
  }
  
  /// Learning cache settings
-@@ -561,6 +566,25 @@ use_context = false
+@@ -561,6 +573,45 @@ use_context = false
          assert!(!settings.conversion.use_context);
      }
  
@@ -175,6 +201,26 @@ index b54c333..02f5186 100644
 +        assert!(!crate::core::engine::EngineConfig::from_settings(&settings).commit_on_input);
 +    }
 +
++    #[test]
++    fn test_exact_only_defaults_and_override() {
++        // Shipped default: no completions of longer readings, no Latin-only
++        // dictionary surfaces for kana.
++        let d = Settings::default();
++        assert!(!d.conversion.prediction);
++        assert!(!d.conversion.alphabet_candidates);
++        let c = crate::core::engine::EngineConfig::from_settings(&d);
++        assert!(!c.prediction && !c.alphabet_candidates);
++
++        let mut file = NamedTempFile::new().unwrap();
++        writeln!(
++            file,
++            "[conversion]\nprediction = true\nalphabet_candidates = true"
++        )
++        .unwrap();
++        let s = Settings::load_from(file.path()).unwrap();
++        assert!(s.conversion.prediction && s.conversion.alphabet_candidates);
++    }
++
      #[test]
      fn test_user_dict_dir() {
          let dir = Settings::user_dict_dir();
@@ -194,11 +240,168 @@ index a4e7f0b..dc2266a 100644
      /// Move the cursor to `cursor`, clamped into the list (0 when empty).
      pub fn set_cursor(&mut self, cursor: usize) {
          self.cursor = cursor.min(self.candidates.len().saturating_sub(1));
+diff --git a/karukan-im/core/src/core/engine/chunk/mod.rs b/karukan-im/core/src/core/engine/chunk/mod.rs
+index b46e39b..c97b87e 100644
+--- a/karukan-im/core/src/core/engine/chunk/mod.rs
++++ b/karukan-im/core/src/core/engine/chunk/mod.rs
+@@ -127,7 +127,17 @@ impl InputMethodEngine {
+     ) -> ComposingChunk {
+         let converted = if reading.chars().any(is_japanese) {
+             let lctx = self.lctx_for(base_ctx, combined);
+-            self.convert_chunk(&reading, &lctx)
++            let converted = self.convert_chunk(&reading, &lctx);
++            // `alphabet_candidates = false`: kana typed as るる must not
++            // turn into lulu on screen; leave it as typed instead.
++            if !self.config.alphabet_candidates
++                && super::conversion::is_latin_only(&converted)
++                && !super::conversion::is_latin_only(&reading)
++            {
++                reading.clone()
++            } else {
++                converted
++            }
+         } else {
+             reading.clone()
+         };
 diff --git a/karukan-im/core/src/core/engine/conversion.rs b/karukan-im/core/src/core/engine/conversion.rs
-index 61f8714..cf2c16a 100644
+index 61f8714..4627893 100644
 --- a/karukan-im/core/src/core/engine/conversion.rs
 +++ b/karukan-im/core/src/core/engine/conversion.rs
-@@ -332,7 +332,17 @@ impl InputMethodEngine {
+@@ -31,6 +31,42 @@ enum TailConstraint {
+     Dead,
+ }
+ 
++/// Whether `reading` is a ＠ character lookup (＠こいし): the user
++/// dictionaries list a character's names and skills under ＠ + name.
++pub(super) fn is_character_query(reading: &str) -> bool {
++    reading.starts_with(['＠', '@']) && reading.chars().count() > 1
++}
++
++/// Whether `reading` holds any hiragana or katakana (full or half width).
++fn has_kana(reading: &str) -> bool {
++    reading.chars().any(|c| {
++        ('\u{3041}'..='\u{309F}').contains(&c)
++            || ('\u{30A0}'..='\u{30FF}').contains(&c)
++            || ('\u{FF66}'..='\u{FF9F}').contains(&c)
++    })
++}
++
++/// Whether `text` is written in Latin letters only — ASCII or full-width
++/// letters, digits, spaces and punctuation, with at least one letter
++/// (KAI, Lulu, LuLu!!, ｒｕｒｕ). Greek, kana and kanji are not.
++pub(super) fn is_latin_only(text: &str) -> bool {
++    let mut letter = false;
++    for c in text.chars() {
++        let half = if ('\u{FF01}'..='\u{FF5E}').contains(&c) {
++            char::from_u32(c as u32 - 0xFEE0).unwrap_or(c)
++        } else if c == '\u{3000}' {
++            ' '
++        } else {
++            c
++        };
++        if !half.is_ascii() || half.is_ascii_control() {
++            return false;
++        }
++        letter |= half.is_ascii_alphabetic();
++    }
++    letter
++}
++
+ /// Mozc-style width/script annotation for a pure-kana candidate, or `None`
+ /// if the text mixes scripts or contains kanji/punctuation. Used to label
+ /// `あ` / `ア` / `ｱ` candidates in the conversion list.
+@@ -207,6 +243,14 @@ impl InputMethodEngine {
+         .collect::<Vec<_>>();
+         let mut candidates = Vec::new();
+         let mut seen = HashSet::new();
++        // かい → KAI: an English word or romaji spelling is not what a kana
++        // reading asks for. Marking them seen also keeps them out of the
++        // predictive pass below.
++        // ＠ readings list a character's skills, and some are English
++        // (WHITE FANG 465): keep them.
++        let drop_latin =
++            !self.config.alphabet_candidates && has_kana(reading) && !is_character_query(reading);
++        let wanted = |surface: &str| !(drop_latin && is_latin_only(surface));
+ 
+         // Exact matches, user dictionary first — only when no romaji tail
+         // is pending (an exact hit on the base would ignore the typed
+@@ -222,7 +266,7 @@ impl InputMethodEngine {
+                 if candidates.len() >= limit {
+                     break;
+                 }
+-                if seen.insert(cand.surface.clone()) {
++                if wanted(&cand.surface) && seen.insert(cand.surface.clone()) {
+                     candidates.push(AnnotatedCandidate::new(cand.surface.clone(), source));
+                 }
+             }
+@@ -233,7 +277,8 @@ impl InputMethodEngine {
+         // rides on the candidate so selecting it commits and records under
+         // the right key.
+         let constraint = self.tail_constraint(pending);
+-        if reading.chars().count() >= min_prefix_chars
++        if self.config.prediction
++            && reading.chars().count() >= min_prefix_chars
+             && !matches!(constraint, TailConstraint::Dead)
+         {
+             let mut budget = predictive_limit;
+@@ -253,7 +298,7 @@ impl InputMethodEngine {
+                     if budget == 0 || candidates.len() >= limit {
+                         break;
+                     }
+-                    if seen.insert(m.candidate.surface.clone()) {
++                    if wanted(&m.candidate.surface) && seen.insert(m.candidate.surface.clone()) {
+                         budget -= 1;
+                         candidates.push(
+                             AnnotatedCandidate::new(m.candidate.surface.clone(), source)
+@@ -297,7 +342,19 @@ impl InputMethodEngine {
+         // just means no model candidates: symbol-only and early keystrokes
+         // still get dictionary/rewriter/fallback candidates. Loading here
+         // synchronously would block the key-event thread on the download.
+-        let candidates = self.model_candidates(reading, num_candidates);
++        // A ＠ lookup the user dictionaries answer (＠こいし) is a list, not
++        // text to convert: the model would only add ＠小石 / ＠Koiし.
++        let listed = is_character_query(reading)
++            && self
++                .dicts
++                .user
++                .as_ref()
++                .is_some_and(|d| d.exact_match_search(reading).is_some());
++        let candidates = if listed {
++            Vec::new()
++        } else {
++            self.model_candidates(reading, num_candidates)
++        };
+ 
+         let hiragana = reading.to_string();
+         let katakana = karukan_engine::hiragana_to_katakana(reading);
+@@ -308,14 +365,22 @@ impl InputMethodEngine {
+         // 1. Learning cache candidates (highest priority).
+         //    Force-inserted so they win against duplicate text from later sources.
+         //    Skipped when the caller asks for a learning-free conversion (Tab key).
++        //    Only exact matches go first: a learned reading that merely
++        //    starts with the typed one (るるはその for るる) is a past
++        //    sentence, not this word, and waits with the other predictive
++        //    candidates in step 4.
++        let mut learned_predictive = Vec::new();
+         if learning == LearningLookup::Use {
+             for c in self.lookup_learning_candidates(reading) {
+                 // Exact matches have reading == input reading; use None to avoid redundancy
+                 let cand_reading = c.reading.filter(|r| r != reading);
+-                builder.push_force(
+-                    AnnotatedCandidate::new(c.text, CandidateSource::Learning)
+-                        .with_reading(cand_reading),
+-                );
++                let ac = AnnotatedCandidate::new(c.text, CandidateSource::Learning)
++                    .with_reading(cand_reading);
++                if ac.reading.is_none() {
++                    builder.push_force(ac);
++                } else {
++                    learned_predictive.push(ac);
++                }
+             }
+         }
+ 
+@@ -332,11 +397,39 @@ impl InputMethodEngine {
              )
              .into_iter()
              .partition(|ac| ac.source == CandidateSource::UserDictionary);
@@ -217,36 +420,65 @@ index 61f8714..cf2c16a 100644
              builder.push(ac);
          }
  
-@@ -347,13 +357,26 @@ impl InputMethodEngine {
-                 ));
-             }
-         } else {
+-        // 3. Model inference results
++        // 3. Model inference results. With `alphabet_candidates = false` a
++        //    kana reading gets no Latin-only sentence from the model either
++        //    (るる → Lulu).
++        let drop_latin =
++            !self.config.alphabet_candidates && has_kana(reading) && !is_character_query(reading);
++        let mut candidates = candidates;
++        let swaps: Vec<String> = match candidates.first() {
 +            // One word of the model's best sentence, swapped for its other
 +            // dictionary spellings (何々の旅に → 何々の度に). The dictionaries
 +            // below only match the whole reading, so inside a sentence these
 +            // are the only dictionary alternatives there are.
-+            let swaps = self.word_swap_candidates(reading, &candidates[0]);
-             for text in candidates {
++            Some(best) => self
++                .word_swap_candidates(reading, best)
++                .into_iter()
++                .filter(|t| !(drop_latin && is_latin_only(t)))
++                .collect(),
++            None => Vec::new(),
++        };
++        candidates.retain(|t| !(drop_latin && is_latin_only(t)));
+         if candidates.is_empty() {
+             // No literal fallback in emoji mode: `:smile` must not outrank
+             // the 😄 surfaced by the rewriter step below.
+@@ -351,9 +444,19 @@ impl InputMethodEngine {
                  builder.push(AnnotatedCandidate::new(text, CandidateSource::Model));
              }
-+            for text in swaps {
-+                builder.push(AnnotatedCandidate::new(text, CandidateSource::Dictionary));
-+            }
          }
++        for text in swaps {
++            builder.push(AnnotatedCandidate::new(text, CandidateSource::Dictionary));
++        }
  
 -        // 4. System dictionary candidates
 -        for ac in system_dict {
 +        // 4. Exact system dictionary candidates, then the predictive ones
-+        //    (user dictionary first, as among the exact matches)
++        //    (learned ones first, then the user dictionary, as among the exact
++        //    matches)
 +        for ac in system_exact
 +            .into_iter()
++            .chain(learned_predictive)
 +            .chain(user_predictive)
 +            .chain(system_predictive)
 +        {
              builder.push(ac);
          }
  
-@@ -650,10 +673,14 @@ impl InputMethodEngine {
+@@ -446,7 +549,11 @@ impl InputMethodEngine {
+         }
+ 
+         // Prefix match (predictive), narrowed to the kana the tail can
+-        // still become — mirrors the dictionary's expanded search
++        // still become — mirrors the dictionary's expanded search. Off with
++        // `prediction = false`: あ must not offer a learned あわせて.
++        if !self.config.prediction {
++            return candidates;
++        }
+         for (full_reading, surface, _score) in cache.prefix_lookup(reading) {
+             if candidates.len() >= max {
+                 break;
+@@ -650,10 +757,14 @@ impl InputMethodEngine {
                      }
                  }
  
@@ -264,7 +496,7 @@ index 61f8714..cf2c16a 100644
                      return self.refine_through_composing(key);
                  }
  
-@@ -665,6 +692,57 @@ impl InputMethodEngine {
+@@ -665,6 +776,57 @@ impl InputMethodEngine {
          }
      }
  
@@ -474,6 +706,22 @@ index addd840..9dafaab 100644
 +    *slot = Some((key, Arc::downgrade(&dict)));
 +    Some(dict)
  }
+diff --git a/karukan-im/core/src/core/engine/input.rs b/karukan-im/core/src/core/engine/input.rs
+index a046768..4e8f9fd 100644
+--- a/karukan-im/core/src/core/engine/input.rs
++++ b/karukan-im/core/src/core/engine/input.rs
+@@ -32,8 +32,11 @@ impl InputMethodEngine {
+         // Auto-suggest via chunked conversion. Skipped in alphabet mode
+         // unless the buffer still contains kana (mode switched mid-word),
+         // so live conversion stays alive on a mixed reading.
++        // ＠こいし is a lookup, not text: no live conversion (＠恋し), so the
++        // preedit keeps the kana and the dictionary's list is shown.
+         let convert = !self.suppress_suggest
+             && !full_reading.is_empty()
++            && !super::conversion::is_character_query(&full_reading)
+             && (self.mode.current() != InputMode::Alphabet
+                 || karukan_engine::contains_kana(&full_reading));
+         let candidates = if convert {
 diff --git a/karukan-im/core/src/core/engine/mod.rs b/karukan-im/core/src/core/engine/mod.rs
 index 6c6179e..61700a2 100644
 --- a/karukan-im/core/src/core/engine/mod.rs
@@ -924,11 +1172,246 @@ index 0000000..1c4ceba
 +    engine.process_key(&press('a'));
 +    assert_eq!(engine.input_buf.reading(), "あいか");
 +}
+diff --git a/karukan-im/core/src/core/engine/tests/exact_only.rs b/karukan-im/core/src/core/engine/tests/exact_only.rs
+new file mode 100644
+index 0000000..dd47e3e
+--- /dev/null
++++ b/karukan-im/core/src/core/engine/tests/exact_only.rs
+@@ -0,0 +1,174 @@
++//! `prediction = false` and `alphabet_candidates = false`: only candidates
++//! whose reading is the typed one, and no Latin-only dictionary surfaces
++//! for a kana reading. ＠ lookups keep their English skill names.
++
++use super::*;
++
++fn engine(json: &str, prediction: bool, alphabet: bool) -> InputMethodEngine {
++    let mut engine = InputMethodEngine::new();
++    engine.converters.kanji = None;
++    engine.config.prediction = prediction;
++    engine.config.alphabet_candidates = alphabet;
++    engine.dicts.system = Some(dict_from_json(json));
++    engine
++}
++
++fn convert(engine: &mut InputMethodEngine, romaji: &str) -> Vec<String> {
++    for ch in romaji.chars() {
++        engine.process_key(&press(ch));
++    }
++    engine.process_key(&press_key(Keysym::SPACE));
++    engine
++        .candidates()
++        .unwrap()
++        .candidates()
++        .iter()
++        .map(|c| c.text.clone())
++        .collect()
++}
++
++const DICT: &str = r#"[
++    {"reading":"かい","candidates":[{"surface":"会","score":0.0},{"surface":"KAI","score":1.0},{"surface":"ｋａｉ","score":2.0},{"surface":"χ","score":3.0}]},
++    {"reading":"かいぎ","candidates":[{"surface":"会議","score":0.0}]},
++    {"reading":"＠しろこ","candidates":[{"surface":"砂狼シロコ","score":0.0},{"surface":"WHITE FANG 465","score":1.0}]}
++]"#;
++
++#[test]
++fn no_completion_of_a_longer_reading() {
++    let mut e = engine(DICT, false, true);
++    let list = convert(&mut e, "kai");
++    assert!(list.contains(&"会".to_string()), "{list:?}");
++    assert!(!list.contains(&"会議".to_string()), "{list:?}");
++}
++
++#[test]
++fn prediction_on_keeps_the_completion() {
++    let mut e = engine(DICT, true, true);
++    assert!(convert(&mut e, "kai").contains(&"会議".to_string()));
++}
++
++#[test]
++fn no_learned_completion_of_a_longer_reading() {
++    let mut e = engine(DICT, false, true);
++    e.learning = Some(karukan_engine::LearningCache::new(Default::default()));
++    e.learning.as_mut().unwrap().record("あわせて", "合わせて");
++    let list = convert(&mut e, "a");
++    assert!(!list.contains(&"合わせて".to_string()), "{list:?}");
++}
++
++#[test]
++fn no_latin_surface_for_a_kana_reading() {
++    let mut e = engine(DICT, false, false);
++    let list = convert(&mut e, "kai");
++    assert!(
++        !list.iter().any(|t| t == "KAI" || t == "ｋａｉ"),
++        "{list:?}"
++    );
++    assert!(
++        list.contains(&"χ".to_string()),
++        "Greek is not romaji: {list:?}"
++    );
++}
++
++#[test]
++fn latin_surfaces_stay_when_allowed() {
++    let mut e = engine(DICT, false, true);
++    assert!(convert(&mut e, "kai").contains(&"KAI".to_string()));
++}
++
++#[test]
++fn character_lookup_keeps_english_skills_and_order() {
++    let mut e = engine(DICT, false, false);
++    e.dicts.user = Some(dict_from_json(
++        r#"[{"reading":"＠しろこ","candidates":[{"surface":"砂狼シロコ","score":0.0},{"surface":"WHITE FANG 465","score":1.0}]}]"#,
++    ));
++    let list = convert(&mut e, "@siroko");
++    assert_eq!(list[0], "砂狼シロコ", "{list:?}");
++    assert!(list.contains(&"WHITE FANG 465".to_string()), "{list:?}");
++}
++
++#[test]
++fn latin_only_detection() {
++    use crate::core::engine::conversion::is_latin_only;
++    assert!(is_latin_only("KAI"));
++    assert!(is_latin_only("LuLu!!"));
++    assert!(is_latin_only("ｒｕｒｕ"));
++    assert!(is_latin_only("LU LU LU"));
++    assert!(!is_latin_only("χ"));
++    assert!(!is_latin_only("465"));
++    assert!(!is_latin_only("ルル"));
++    assert!(!is_latin_only("G戦杖"));
++}
++
++#[test]
++fn no_latin_word_swap_for_a_kana_reading() {
++    // The swap step rewrites one word of the model's sentence with its
++    // other dictionary spellings: るる → Lulu must not come back that way.
++    let json = r#"[{"reading":"るる","candidates":[{"surface":"縷々","score":0.0},{"surface":"Lulu","score":1.0}]}]"#;
++    let mut e = engine(json, false, false);
++    seed_model_cache(&mut e, "ルル", "", &["ルル"]);
++    let list = convert(&mut e, "ruru");
++    assert!(list.contains(&"縷々".to_string()), "{list:?}");
++    assert!(!list.contains(&"Lulu".to_string()), "{list:?}");
++}
++
++#[test]
++fn no_latin_model_sentence_for_a_kana_reading() {
++    let mut e = engine(
++        r#"[{"reading":"ん","candidates":[{"surface":"ン","score":0.0}]}]"#,
++        false,
++        false,
++    );
++    seed_model_cache(&mut e, "ルル", "", &["Lulu", "ルル"]);
++    let list = convert(&mut e, "ruru");
++    assert_eq!(list[0], "ルル", "{list:?}");
++    assert!(!list.contains(&"Lulu".to_string()), "{list:?}");
++}
++
++#[test]
++fn answered_character_lookup_skips_the_model() {
++    let mut e = engine(
++        r#"[{"reading":"ん","candidates":[{"surface":"ン","score":0.0}]}]"#,
++        false,
++        false,
++    );
++    e.dicts.user = Some(dict_from_json(
++        r#"[{"reading":"＠こいし","candidates":[{"surface":"古明地こいし","score":0.0}]}]"#,
++    ));
++    seed_model_cache(&mut e, "＠コイシ", "", &["＠小石"]);
++    let list = convert(&mut e, "@koisi");
++    assert_eq!(list[0], "古明地こいし", "{list:?}");
++    assert!(!list.contains(&"＠小石".to_string()), "{list:?}");
++}
++
++#[test]
++fn live_conversion_keeps_kana_instead_of_latin() {
++    let mut e = engine(
++        r#"[{"reading":"ん","candidates":[{"surface":"ン","score":0.0}]}]"#,
++        false,
++        false,
++    );
++    e.live.enabled = true;
++    seed_model_cache(&mut e, "ルル", "", &["lulu"]);
++    e.process_key(&press('r'));
++    e.process_key(&press('u'));
++    e.process_key(&press('r'));
++    e.process_key(&press('u'));
++    assert_eq!(e.chunks[0].converted, "るる");
++    assert_ne!(e.preedit().unwrap().text(), "lulu");
++}
++
++#[test]
++fn live_conversion_leaves_a_character_lookup_as_typed() {
++    let mut e = engine(
++        r#"[{"reading":"ん","candidates":[{"surface":"ン","score":0.0}]}]"#,
++        false,
++        false,
++    );
++    e.live.enabled = true;
++    seed_model_cache(&mut e, "＠コイシ", "", &["＠小石"]);
++    for ch in "@koisi".chars() {
++        e.process_key(&press(ch));
++    }
++    assert_eq!(e.preedit().unwrap().text(), "＠こいし");
++}
+diff --git a/karukan-im/core/src/core/engine/tests/learning.rs b/karukan-im/core/src/core/engine/tests/learning.rs
+index e2b0062..2a728f5 100644
+--- a/karukan-im/core/src/core/engine/tests/learning.rs
++++ b/karukan-im/core/src/core/engine/tests/learning.rs
+@@ -389,6 +389,30 @@ fn ctrl_delete_removes_prefix_matched_entry_by_full_reading() {
+     engine.process_key(&press('a'));
+     engine.process_key(&press('i'));
+     engine.process_key(&press_key(Keysym::SPACE));
++    // A prefix match is a past, longer reading: it no longer takes the
++    // first slot, so walk down to it.
++    let first = engine
++        .state()
++        .candidates()
++        .unwrap()
++        .selected()
++        .unwrap()
++        .clone();
++    assert_ne!(first.text, "挨拶");
++    for _ in 0..20 {
++        if engine
++            .state()
++            .candidates()
++            .unwrap()
++            .selected()
++            .unwrap()
++            .text
++            == "挨拶"
++        {
++            break;
++        }
++        engine.process_key(&press_key(Keysym::SPACE));
++    }
+ 
+     let selected = engine
+         .state()
+@@ -465,3 +489,19 @@ fn space_key_keeps_learning_in_composing() {
+         texts,
+     );
+ }
++
++#[test]
++fn exact_learning_still_comes_first() {
++    let mut engine = engine_with_learned("あい", "藍");
++    engine.process_key(&press('a'));
++    engine.process_key(&press('i'));
++    engine.process_key(&press_key(Keysym::SPACE));
++    let first = engine
++        .state()
++        .candidates()
++        .unwrap()
++        .selected()
++        .unwrap()
++        .clone();
++    assert_eq!(first.text, "藍");
++}
 diff --git a/karukan-im/core/src/core/engine/tests/mod.rs b/karukan-im/core/src/core/engine/tests/mod.rs
-index 098ad3e..a5c7127 100644
+index 098ad3e..835bee9 100644
 --- a/karukan-im/core/src/core/engine/tests/mod.rs
 +++ b/karukan-im/core/src/core/engine/tests/mod.rs
-@@ -10,6 +10,7 @@ mod basic;
+@@ -10,24 +10,30 @@ mod basic;
  mod candidate_window;
  mod candidates;
  mod chunks;
@@ -936,7 +1419,9 @@ index 098ad3e..a5c7127 100644
  mod conversion;
  mod cursor;
  mod date;
-@@ -18,16 +19,20 @@ mod katakana;
+ mod emoji;
++mod exact_only;
+ mod katakana;
  mod learning;
  mod live_conversion;
  mod mode_toggle;
@@ -957,7 +1442,7 @@ index 098ad3e..a5c7127 100644
  
  /// Engine seeded with a learning entry `reading → surface`, no kanji model.
  /// Bypasses `init.rs` (which gates learning on settings + file I/O) and
-@@ -58,12 +63,12 @@ fn seed_model_cache(engine: &mut InputMethodEngine, katakana: &str, lctx: &str,
+@@ -58,12 +64,12 @@ fn seed_model_cache(engine: &mut InputMethodEngine, katakana: &str, lctx: &str,
  }
  
  /// Build a dictionary from inline JSON, hiding the temp-file plumbing.
@@ -1352,10 +1837,10 @@ index 0000000..b952572
 +    assert_eq!(out, ["円タク".to_string()]);
 +}
 diff --git a/karukan-im/core/src/core/engine/types.rs b/karukan-im/core/src/core/engine/types.rs
-index 0f9ba86..aa386ee 100644
+index 0f9ba86..80dc465 100644
 --- a/karukan-im/core/src/core/engine/types.rs
 +++ b/karukan-im/core/src/core/engine/types.rs
-@@ -107,6 +107,10 @@ pub struct EngineConfig {
+@@ -107,6 +107,15 @@ pub struct EngineConfig {
      pub verbose: bool,
      /// Whether live conversion is enabled at engine startup
      pub live_conversion: bool,
@@ -1363,28 +1848,39 @@ index 0f9ba86..aa386ee 100644
 +    /// the selection and starts the next composition (MS-IME / mozc style)
 +    /// instead of refining the reading in place
 +    pub commit_on_input: bool,
++    /// Offer candidates whose reading extends the typed one (predictive
++    /// dictionary/learning completions); `false` keeps exact readings only
++    pub prediction: bool,
++    /// Offer Latin-only dictionary surfaces for a reading typed in kana
++    pub alphabet_candidates: bool,
      /// When the candidate window (aux line included) opens
      pub candidate_window: CandidateWindow,
      /// Which symbol the `,` `.` `/` `[` `]` keys type
-@@ -142,6 +146,7 @@ impl EngineConfig {
+@@ -142,6 +151,9 @@ impl EngineConfig {
              strategy: settings.conversion.strategy,
              verbose: settings.display.verbose,
              live_conversion: settings.conversion.live_conversion,
 +            commit_on_input: settings.conversion.commit_on_input,
++            prediction: settings.conversion.prediction,
++            alphabet_candidates: settings.conversion.alphabet_candidates,
              candidate_window: settings.display.candidate_window,
              symbol: settings.symbol.style(),
              width: settings.width,
-@@ -168,6 +173,9 @@ impl Default for EngineConfig {
+@@ -168,6 +180,13 @@ impl Default for EngineConfig {
              strategy: StrategyMode::default(),
              verbose: false,
              live_conversion: false,
 +            // The engine default keeps the refine-in-place behaviour; the
 +            // shipped config.toml default (default.toml) turns it on.
 +            commit_on_input: false,
++            // Engine defaults keep upstream's behaviour; the shipped
++            // default.toml turns both off.
++            prediction: true,
++            alphabet_candidates: true,
              candidate_window: CandidateWindow::default(),
              symbol: SymbolStyle::default(),
              width: WidthRules::default(),
-@@ -305,13 +313,16 @@ impl LiveConversion {
+@@ -305,13 +324,16 @@ impl LiveConversion {
      }
  }
  
@@ -1434,6 +1930,10 @@ cat > PKGBUILD <<'PKGBUILD_EOF'
 #   - every input context shares one loaded copy of the dictionaries
 #   - larger dictionary load limits, for extended system dictionaries
 #   - word swaps: dictionary spellings for one word inside the model's sentence
+#   - learned completions of longer past readings rank after the model
+#   - [conversion] prediction / alphabet_candidates: exact readings only, no
+#     Latin-only candidates for kana (shipped default: both off)
+#   - ＠ character lookups (＠こいし): the dictionary's list, no model output
 # Based on the AUR karukan-git PKGBUILD by koh11235813.
 pkgname=karukan-kz-git
 pkgver=0
@@ -1512,6 +2012,10 @@ check() {
         core::engine::tests::user_dict_order core::engine::tests::shared_dicts \
         core::engine::tests::word_swap \
         core::engine::tests::muhenkan \
+        core::engine::tests::exact_only \
+        config::settings::tests::test_exact_only_defaults_and_override \
+        core::engine::tests::learning::exact_learning_still_comes_first \
+        core::engine::tests::learning::ctrl_delete_removes_prefix_matched_entry_by_full_reading \
         config::settings::tests::test_commit_on_input_default_and_override \
         --test-threads=1
 }

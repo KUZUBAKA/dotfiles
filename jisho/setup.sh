@@ -27,7 +27,7 @@ readonly USER_DICTS="$DATA/user_dicts"
 readonly OFFICIAL_URL="https://github.com/togatoga/karukan/releases/latest/download/dict.tgz"
 # The files this package puts into user_dicts (also removed as .bin, from
 # the earlier build-dict.sh, so nothing is loaded twice).
-readonly OUR_DICTS=(10-bluearchive 11-jujutsukaisen 12-touhou 13-nichijo 20-yojijukugo)
+readonly OUR_DICTS=(05-characters 10-bluearchive 11-jujutsukaisen 12-touhou 13-nichijo 20-yojijukugo)
 
 update=0
 refresh=0
