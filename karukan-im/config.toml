@@ -1,6 +1,6 @@
 [conversion]
 # ライブ変換 オンオフ
-live_conversion = true
+live_conversion = false
 # 文字入力で変換確定
 commit_on_input = true
 # ペルソナの設定 20文字以内最大25文字
