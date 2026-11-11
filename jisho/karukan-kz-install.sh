@@ -24,10 +24,12 @@
 #  11. 学習した変換を、AI が文脈を見て使うかどうか決める（18 の後ろの さい は 再 ではなく 歳）。
 #      ライブ変換でも、文の中の単語にも学習を使う。数字の後ろは助数詞の辞書（〈数〉さい → 歳）を優先。
 #      自分で選んでいない変換（ライブ変換のまま Enter）は学習しない。
+#  12. AI が「ありそうにない」と見る候補（後ハイ、で着ていない など）を出さない。
+#      AI がひらがなのままにした単語（わたしは）も、学習した表記（私は）で出す。
 set -euo pipefail
 
 readonly KZ_VERSION="1854827"
-readonly PATCH_SHA256="84076ba1b426946d9b56671c0815334950038e949fc07caf7d0dc20a935d3640"
+readonly PATCH_SHA256="29b305be995078553454be44804203b2504564480a5100afec81dea471c2b250"
 readonly WORK_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/karukan-kz"
 
 say()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
@@ -64,7 +66,7 @@ cd "$WORK_DIR"
 
 say "パッチを書き出しています（$WORK_DIR）"
 cat > karukan-kz.patch <<'PATCH_EOF'
-From 202d204aa8a697fbc8c0dfda6c55a51d762f4de9 Mon Sep 17 00:00:00 2001
+From 7d428cb131399fced194802d1897b0377ea02744 Mon Sep 17 00:00:00 2001
 From: karukan-patch <noreply@example.invalid>
 Date: Sat, 7 Nov 2026 23:12:11 +0900
 Subject: [PATCH] =?UTF-8?q?karukan-kz:=20commit=5Fon=5Finput,=20=E7=84=A1?=
@@ -73,7 +75,7 @@ Subject: [PATCH] =?UTF-8?q?karukan-kz:=20commit=5Fon=5Finput,=20=E7=84=A1?=
  =?UTF-8?q?=20word=20swaps,=20learned-prefix=20ranking,=20exact-only=20and?=
  =?UTF-8?q?=20no-Latin=20options,=20=EF=BC=A0=20character=20lookups,=20lea?=
  =?UTF-8?q?rning=20judged=20in=20context=20(model=20scores),=20counters=20?=
- =?UTF-8?q?after=20numbers?=
+ =?UTF-8?q?after=20numbers,=20far-fetched=20candidates=20dropped?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -88,27 +90,27 @@ Claude-Session: https://claude.ai/code/session_01QBa6wktjmCU1vbnc5GNtCs
  karukan-im/core/src/config/settings.rs        |  51 ++
  karukan-im/core/src/core/candidate.rs         |   5 +
  karukan-im/core/src/core/engine/chunk/mod.rs  |  15 +-
- karukan-im/core/src/core/engine/conversion.rs | 345 ++++++++-
- karukan-im/core/src/core/engine/init.rs       | 123 +++-
+ karukan-im/core/src/core/engine/conversion.rs | 358 ++++++++-
+ karukan-im/core/src/core/engine/init.rs       | 123 ++-
  karukan-im/core/src/core/engine/input.rs      |   5 +-
  karukan-im/core/src/core/engine/mod.rs        |  17 +-
  karukan-im/core/src/core/engine/mode.rs       |  87 +++
  karukan-im/core/src/core/engine/model.rs      |  15 +
- karukan-im/core/src/core/engine/prefer.rs     | 670 ++++++++++++++++++
- karukan-im/core/src/core/engine/swap.rs       | 177 +++++
+ karukan-im/core/src/core/engine/prefer.rs     | 724 ++++++++++++++++++
+ karukan-im/core/src/core/engine/swap.rs       | 192 +++++
  .../src/core/engine/tests/commit_on_input.rs  | 173 +++++
  .../core/src/core/engine/tests/exact_only.rs  | 194 +++++
- .../core/src/core/engine/tests/learning.rs    |  40 ++
+ .../core/src/core/engine/tests/learning.rs    |  40 +
  karukan-im/core/src/core/engine/tests/mod.rs  |  11 +-
  .../core/src/core/engine/tests/muhenkan.rs    | 128 ++++
- .../core/src/core/engine/tests/prefer.rs      | 372 ++++++++++
+ .../core/src/core/engine/tests/prefer.rs      | 453 +++++++++++
  .../core/src/core/engine/tests/rewriter.rs    |   2 +-
  .../src/core/engine/tests/shared_dicts.rs     |  75 ++
  .../src/core/engine/tests/user_dict_order.rs  |  78 ++
  .../core/src/core/engine/tests/word_swap.rs   |  61 ++
  karukan-im/core/src/core/engine/types.rs      |  28 +-
  karukan-im/core/src/core/keycode.rs           |   2 +
- 27 files changed, 2724 insertions(+), 71 deletions(-)
+ 27 files changed, 2886 insertions(+), 72 deletions(-)
  create mode 100644 karukan-im/core/src/core/engine/prefer.rs
  create mode 100644 karukan-im/core/src/core/engine/swap.rs
  create mode 100644 karukan-im/core/src/core/engine/tests/commit_on_input.rs
@@ -403,7 +405,7 @@ index b46e39b..c78c111 100644
              reading.clone()
          };
 diff --git a/karukan-im/core/src/core/engine/conversion.rs b/karukan-im/core/src/core/engine/conversion.rs
-index 61f8714..2cec3ed 100644
+index 61f8714..8df1642 100644
 --- a/karukan-im/core/src/core/engine/conversion.rs
 +++ b/karukan-im/core/src/core/engine/conversion.rs
 @@ -31,6 +31,72 @@ enum TailConstraint {
@@ -645,7 +647,7 @@ index 61f8714..2cec3ed 100644
  
          // 2. User dictionary candidates (system dictionary follows the model
          //    in step 4, so the two are split here).
-@@ -332,11 +487,59 @@ impl InputMethodEngine {
+@@ -332,11 +487,68 @@ impl InputMethodEngine {
              )
              .into_iter()
              .partition(|ac| ac.source == CandidateSource::UserDictionary);
@@ -675,19 +677,28 @@ index 61f8714..2cec3ed 100644
 +            // One word of the model's best sentence, swapped for its other
 +            // dictionary spellings (何々の旅に → 何々の度に). The dictionaries
 +            // below only match the whole reading, so inside a sentence these
-+            // are the only dictionary alternatives there are. The model
-+            // ranks them: its likeliest respelling first.
-+            Some(best) => {
-+                let swaps: Vec<String> = self
-+                    .word_swap_candidates(reading, best, drop_latin)
-+                    .into_iter()
-+                    .filter(|t| !(drop_latin && is_unwanted_latin(reading, t)))
-+                    .collect();
-+                self.rank_by_model(&prefix, &span, &span_lctx, swaps)
-+            }
++            // are the only dictionary alternatives there are.
++            Some(best) => self
++                .word_swap_candidates(reading, best, drop_latin)
++                .into_iter()
++                .filter(|t| !(drop_latin && is_unwanted_latin(reading, t)))
++                .collect(),
 +            None => Vec::new(),
 +        };
 +        candidates.retain(|t| !(drop_latin && is_unwanted_latin(reading, t)));
++        // The other beams and the swaps are judged together by the main
++        // model: its likeliest first, and nothing it finds far-fetched next
++        // to its best answer (耳が主基です, で着ていない, その足袋に).
++        let swap_texts: HashSet<String> = swaps.iter().cloned().collect();
++        if let Some(best) = candidates.first().cloned() {
++            let mut rest = candidates.split_off(1);
++            for text in swaps {
++                if text != best && !rest.contains(&text) {
++                    rest.push(text);
++                }
++            }
++            candidates.extend(self.rank_by_model(&prefix, &span, &span_lctx, &best, rest));
++        }
 +        // Learned words inside the model's sentence: ahead of it when the
 +        // context accepts them, right behind it otherwise.
 +        let mut respelled: Vec<String> = in_sentence
@@ -707,13 +718,19 @@ index 61f8714..2cec3ed 100644
          if candidates.is_empty() {
              // No literal fallback in emoji mode: `:smile` must not outrank
              // the 😄 surfaced by the rewriter step below.
-@@ -351,9 +554,19 @@ impl InputMethodEngine {
-                 builder.push(AnnotatedCandidate::new(text, CandidateSource::Model));
+@@ -348,12 +560,24 @@ impl InputMethodEngine {
+             }
+         } else {
+             for text in candidates {
+-                builder.push(AnnotatedCandidate::new(text, CandidateSource::Model));
++                let source = if swap_texts.contains(&text) {
++                    CandidateSource::Dictionary
++                } else {
++                    CandidateSource::Model
++                };
++                builder.push(AnnotatedCandidate::new(text, source));
              }
          }
-+        for text in swaps {
-+            builder.push(AnnotatedCandidate::new(text, CandidateSource::Dictionary));
-+        }
  
 -        // 4. System dictionary candidates
 -        for ac in system_dict {
@@ -729,7 +746,7 @@ index 61f8714..2cec3ed 100644
              builder.push(ac);
          }
  
-@@ -446,7 +659,11 @@ impl InputMethodEngine {
+@@ -446,7 +670,11 @@ impl InputMethodEngine {
          }
  
          // Prefix match (predictive), narrowed to the kana the tail can
@@ -742,7 +759,7 @@ index 61f8714..2cec3ed 100644
          for (full_reading, surface, _score) in cache.prefix_lookup(reading) {
              if candidates.len() >= max {
                  break;
-@@ -650,10 +867,14 @@ impl InputMethodEngine {
+@@ -650,10 +878,14 @@ impl InputMethodEngine {
                      }
                  }
  
@@ -760,7 +777,7 @@ index 61f8714..2cec3ed 100644
                      return self.refine_through_composing(key);
                  }
  
-@@ -665,6 +886,57 @@ impl InputMethodEngine {
+@@ -665,6 +897,57 @@ impl InputMethodEngine {
          }
      }
  
@@ -818,7 +835,7 @@ index 61f8714..2cec3ed 100644
      /// Feed a refining keystroke (printable char, Backspace) through the
      /// composing path, then re-enter the conversion with the previous
      /// source filter if one was active. With a filter the composing render
-@@ -737,11 +1009,27 @@ impl InputMethodEngine {
+@@ -737,11 +1020,27 @@ impl InputMethodEngine {
      /// buffer is a `:query`, not a kana reading, and would corrupt the
      /// kana-keyed cache.
      pub(super) fn record_learning(&mut self, reading: &str, surface: &str) {
@@ -848,7 +865,7 @@ index 61f8714..2cec3ed 100644
          }
      }
  
-@@ -800,10 +1088,17 @@ impl InputMethodEngine {
+@@ -800,10 +1099,17 @@ impl InputMethodEngine {
          let Some(reading) = self.state.reading().map(str::to_string) else {
              return EngineResult::consumed();
          };
@@ -1228,10 +1245,10 @@ index d509d60..5294b9a 100644
              return Vec::new();
 diff --git a/karukan-im/core/src/core/engine/prefer.rs b/karukan-im/core/src/core/engine/prefer.rs
 new file mode 100644
-index 0000000..60c9f29
+index 0000000..9c38d3a
 --- /dev/null
 +++ b/karukan-im/core/src/core/engine/prefer.rs
-@@ -0,0 +1,670 @@
+@@ -0,0 +1,724 @@
 +//! What the user prefers, judged in context.
 +//!
 +//! Learning records what was chosen for a reading, never where: さい → 再
@@ -1270,6 +1287,12 @@ index 0000000..60c9f29
 +/// model towards kanji widens the margin even without context, which
 +/// makes the growth alone look small.)
 +const CONTEXT_GAP_MAX: f32 = 5.5;
++/// How far the learned spelling of a word the model left in hiragana may
++/// fall behind the model's sentence (くだ再ね for くださいね is far beyond it).
++const KANA_GAP_MAX: f32 = 4.0;
++/// A beam or a respelling of one word this far behind the model's best
++/// sentence is not offered at all.
++pub(super) const SWAP_GAP_MAX: f32 = 7.0;
 +/// Learned surfaces judged per reading.
 +const MAX_LEARNED_JUDGED: usize = 3;
 +/// Learned words tried, and replaced, inside one sentence.
@@ -1596,7 +1619,9 @@ index 0000000..60c9f29
 +            if sentence.starts_with(counter.surface.as_str()) {
 +                return None;
 +            }
-+            if let Some(out) = self.replace_aligned(&r, 0, len, &word, &counter.surface, sentence) {
++            if let Some((out, _)) =
++                self.replace_aligned(&r, 0, len, &word, &counter.surface, sentence)
++            {
 +                return Some(out);
 +            }
 +        }
@@ -1650,10 +1675,29 @@ index 0000000..60c9f29
 +                break;
 +            }
 +            let word: String = r[start..start + len].iter().collect();
-+            let Some(candidate) = self.replace_aligned(&r, start, len, &word, &learned, &current)
++            let Some((candidate, kana)) =
++                self.replace_aligned(&r, start, len, &word, &learned, &current)
 +            else {
 +                continue;
 +            };
++            // A word the model left in hiragana (わたしは) has no rival
++            // spelling in the sentence: writing it the learned way (私は) is
++            // a matter of notation, judged by how far it falls behind alone.
++            if kana {
++                match self.model_scores_from(
++                    judge,
++                    reading,
++                    lctx,
++                    &[current.as_str(), candidate.as_str()],
++                ) {
++                    Some(scores) if scores[0] - scores[1] <= KANA_GAP_MAX => {
++                        current = candidate;
++                        replaced += 1;
++                    }
++                    _ => result.alternatives.push(candidate),
++                }
++                continue;
++            }
 +            // Learning that only repeats the model's own default tells
 +            // nothing the model did not weigh when it chose otherwise here.
 +            let Some(bare_top) = self.model_best(&word, "") else {
@@ -1691,7 +1735,8 @@ index 0000000..60c9f29
 +    }
 +
 +    /// `sentence` with the word read `word` at `r[start..start + len]`
-+    /// respelled as `learned`, when that word can be located for certain.
++    /// respelled as `learned`, when that word can be located for certain,
++    /// and whether the sentence had left it in hiragana.
 +    fn replace_aligned(
 +        &self,
 +        r: &[char],
@@ -1700,9 +1745,9 @@ index 0000000..60c9f29
 +        word: &str,
 +        learned: &str,
 +        sentence: &str,
-+    ) -> Option<String> {
++    ) -> Option<(String, bool)> {
 +        let katakana = karukan_engine::hiragana_to_katakana(word);
-+        let mut spellings: Vec<String> = vec![katakana];
++        let mut spellings: Vec<String> = vec![katakana, word.to_string()];
 +        for dict in [self.dicts.user.as_deref(), self.dicts.system.as_deref()]
 +            .into_iter()
 +            .flatten()
@@ -1718,10 +1763,11 @@ index 0000000..60c9f29
 +        spellings.dedup();
 +        for spelling in spellings {
 +            let w: Vec<char> = spelling.chars().collect();
-+            if w.is_empty()
-+                || w.len() > s.len()
-+                || w == learned_chars
-+                || w.iter().all(|&c| script(c) == Script::Hira)
++            // Left in hiragana, the word is only where the reading says it
++            // is, and only where a word can begin (after わたしは, not
++            // inside ください).
++            let kana = w.iter().all(|&c| script(c) == Script::Hira);
++            if w.is_empty() || w.len() > s.len() || w == learned_chars || (kana && spelling != word)
 +            {
 +                continue;
 +            }
@@ -1730,14 +1776,16 @@ index 0000000..60c9f29
 +                    continue;
 +                }
 +                let (before, after) = (&s[..at], &s[at + w.len()..]);
-+                if stands_alone(before, &w, after)
-+                    && aligns(before, &r[..start])
-+                    && aligns(after, &r[start + len..])
-+                {
++                let alone = if kana {
++                    starts_a_word(before, &w, true)
++                } else {
++                    stands_alone(before, &w, after)
++                };
++                if alone && aligns(before, &r[..start]) && aligns(after, &r[start + len..]) {
 +                    let mut out: String = before.iter().collect();
 +                    out.push_str(learned);
 +                    out.extend(after.iter());
-+                    return Some(out);
++                    return Some((out, kana));
 +                }
 +            }
 +        }
@@ -1799,6 +1847,29 @@ index 0000000..60c9f29
 +        | '々'
 +        | '〆' => Script::Kanji,
 +        _ => Script::Other,
++    }
++}
++
++/// Whether a word spelled `w` can begin right after `before`: not in the
++/// middle of a kanji or katakana run (後|輩 is one word), and in hiragana
++/// only at the start or — with `after_particle` — after a particle
++/// (それで|わたしは, not くだ|さい). Word swaps do without the particles:
++/// で|きていない would let 着て in.
++pub(super) fn starts_a_word(before: &[char], w: &[char], after_particle: bool) -> bool {
++    let (Some(&prev), Some(&first)) = (before.last(), w.first()) else {
++        return true;
++    };
++    match (script(prev), script(first)) {
++        (Script::Kanji, Script::Kanji) | (Script::Kata, Script::Kata) => false,
++        (Script::Other, Script::Other) => !(prev.is_alphanumeric() && first.is_alphanumeric()),
++        (Script::Hira, Script::Hira) => {
++            after_particle
++                && matches!(
++                    prev,
++                    'は' | 'が' | 'を' | 'に' | 'で' | 'と' | 'も' | 'の' | 'へ'
++                )
++        }
++        _ => true,
 +    }
 +}
 +
@@ -1904,10 +1975,10 @@ index 0000000..60c9f29
 +}
 diff --git a/karukan-im/core/src/core/engine/swap.rs b/karukan-im/core/src/core/engine/swap.rs
 new file mode 100644
-index 0000000..cfb2323
+index 0000000..d712625
 --- /dev/null
 +++ b/karukan-im/core/src/core/engine/swap.rs
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,192 @@
 +//! Word-swap candidates: dictionary alternatives for one word inside the
 +//! model's sentence.
 +//!
@@ -1956,24 +2027,35 @@ index 0000000..cfb2323
 +        word_swaps(&dicts, reading, sentence, skip_latin)
 +    }
 +
-+    /// `texts` (conversions of `prefix` + `span`'s reading) in the order
-+    /// the model finds them likely after `lctx`; unchanged when no model
-+    /// can say.
++    /// `texts` — respellings of `best`, the model's conversion of the
++    /// reading that `prefix` and `span` make up — in the order the model
++    /// finds them likely after `lctx`, without those it finds far-fetched
++    /// next to `best`. Unchanged when no model can say.
 +    pub(super) fn rank_by_model(
 +        &mut self,
 +        prefix: &str,
 +        span: &str,
 +        lctx: &str,
++        best: &str,
 +        texts: Vec<String>,
 +    ) -> Vec<String> {
-+        let tails: Option<Vec<&str>> = texts.iter().map(|t| t.strip_prefix(prefix)).collect();
-+        let Some(tails) = tails.filter(|t| t.len() > 1 && !span.is_empty()) else {
++        let tails: Option<Vec<&str>> = std::iter::once(best)
++            .chain(texts.iter().map(String::as_str))
++            .map(|t| t.strip_prefix(prefix))
++            .collect();
++        let Some(tails) = tails.filter(|_| !texts.is_empty() && !span.is_empty()) else {
 +            return texts;
 +        };
 +        let Some(scores) = self.model_scores(span, lctx, &tails) else {
 +            return texts;
 +        };
-+        let mut ranked: Vec<(f32, String)> = scores.into_iter().zip(texts).collect();
++        let floor = scores[0] - prefer::SWAP_GAP_MAX;
++        let mut ranked: Vec<(f32, String)> = scores[1..]
++            .iter()
++            .copied()
++            .zip(texts)
++            .filter(|(score, _)| *score >= floor)
++            .collect();
 +        ranked.sort_by(|a, b| b.0.total_cmp(&a.0));
 +        ranked.into_iter().map(|(_, text)| text).collect()
 +    }
@@ -2035,9 +2117,13 @@ index 0000000..cfb2323
 +                let Some(spelled) = spelled else {
 +                    continue;
 +                };
-+                let head: String = s_head[..s_head.len() - spelled.chars().count()]
-+                    .iter()
-+                    .collect();
++                let head_chars = &s_head[..s_head.len() - spelled.chars().count()];
++                // 輩 in 後輩 is not a word of its own: swapping it gives 後ハイ.
++                let spelled_chars: Vec<char> = spelled.chars().collect();
++                if !prefer::starts_a_word(head_chars, &spelled_chars, false) {
++                    continue;
++                }
++                let head: String = head_chars.iter().collect();
 +                for surface in surfaces.iter().take(MAX_SURFACES_PER_WORD) {
 +                    // mimiが好きです for みみがすきです: an English spelling of
 +                    // one word is no better than of the whole reading.
@@ -2706,10 +2792,10 @@ index 0000000..144408d
 +}
 diff --git a/karukan-im/core/src/core/engine/tests/prefer.rs b/karukan-im/core/src/core/engine/tests/prefer.rs
 new file mode 100644
-index 0000000..6e62440
+index 0000000..c0b164b
 --- /dev/null
 +++ b/karukan-im/core/src/core/engine/tests/prefer.rs
-@@ -0,0 +1,372 @@
+@@ -0,0 +1,453 @@
 +//! Learning judged in context, counters after a number, and learned words
 +//! inside a sentence (see `engine::prefer`). The model is stood in for by
 +//! the two caches: its conversions and its log-probabilities.
@@ -3045,7 +3131,7 @@ index 0000000..6e62440
 +        &mut e,
 +        "そのたびに",
 +        "",
-+        &[("その足袋に", -9.0), ("その度に", -0.5)],
++        &[("その旅に", -0.6), ("その足袋に", -5.0), ("その度に", -0.5)],
 +    );
 +    let list = space(&mut e, "sonotabini");
 +    assert_eq!(
@@ -3081,6 +3167,87 @@ index 0000000..6e62440
 +    type_keys(&mut e, "mimiwosumasu");
 +    set_live_text(&mut e, "耳を澄ます");
 +    engine_space_first(&mut e, "耳を澄ます");
++}
++
++#[test]
++fn a_far_fetched_respelling_is_not_offered() {
++    let json = r#"[{"reading":"たび","candidates":[{"surface":"旅","score":0.0},{"surface":"足袋","score":1.0},{"surface":"度","score":2.0}]}]"#;
++    let mut e = engine(&[]);
++    e.dicts.system = Some(dict_from_json(json));
++    seed_model_cache(&mut e, "ソノタビニ", "", &["その旅に"]);
++    score(
++        &mut e,
++        "そのたびに",
++        "",
++        &[("その旅に", -0.6), ("その足袋に", -9.0), ("その度に", -0.5)],
++    );
++    let list = space(&mut e, "sonotabini");
++    assert!(list.contains(&"その度に".to_string()), "{list:?}");
++    assert!(!list.contains(&"その足袋に".to_string()), "{list:?}");
++}
++
++#[test]
++fn part_of_a_compound_is_not_respelled() {
++    // 輩 reads はい, but 後輩 is one word: no 後ハイ, 後杯.
++    let json = r#"[
++        {"reading":"はい","candidates":[{"surface":"ハイ","score":0.0},{"surface":"杯","score":1.0},{"surface":"輩","score":2.0}]},
++        {"reading":"こうはい","candidates":[{"surface":"後輩","score":0.0},{"surface":"交配","score":1.0}]}
++    ]"#;
++    let mut e = engine(&[]);
++    e.dicts.system = Some(dict_from_json(json));
++    seed_model_cache(&mut e, "コウハイ", "", &["後輩"]);
++    let list = space(&mut e, "kouhai");
++    assert_eq!(&list[..2], ["後輩", "交配"], "{list:?}");
++    assert!(
++        !list.iter().any(|t| t == "後ハイ" || t == "後杯"),
++        "{list:?}"
++    );
++}
++
++#[test]
++fn a_word_left_in_hiragana_is_written_as_learned() {
++    let mut e = engine(&[("わたし", "私")]);
++    seed_model_cache(&mut e, "ワタシ", "", &["私"]);
++    seed_model_cache(&mut e, "ワタシハ", "", &["わたしは"]);
++    seed_model_cache(&mut e, "ソレデワタシハ", "", &["それでわたしは"]);
++    score(
++        &mut e,
++        "わたしは",
++        "",
++        &[("わたしは", -0.4), ("私は", -1.6)],
++    );
++    score(
++        &mut e,
++        "それでわたしは",
++        "",
++        &[("それでわたしは", -0.3), ("それで私は", -2.0)],
++    );
++    assert_eq!(live(&mut e, "watasiha"), "私は");
++    engine_space_first(&mut e, "私は");
++    for _ in 0..3 {
++        e.process_key(&press_key(Keysym::ESCAPE));
++    }
++    assert_eq!(live(&mut e, "soredewatasiha"), "それで私は");
++}
++
++#[test]
++fn hiragana_that_is_not_that_word_stays() {
++    // さい inside ください: not after a particle. にち inside こんにちは:
++    // far behind the model's own sentence.
++    let mut e = engine(&[("さい", "再"), ("にち", "日")]);
++    seed_model_cache(&mut e, "クダサイネ", "", &["くださいね"]);
++    seed_model_cache(&mut e, "コンニチハ", "", &["こんにちは"]);
++    score(
++        &mut e,
++        "こんにちは",
++        "",
++        &[("こんにちは", -0.1), ("こん日は", -9.0)],
++    );
++    assert_eq!(live(&mut e, "kudasaine"), "くださいね");
++    for _ in 0..3 {
++        e.process_key(&press_key(Keysym::ESCAPE));
++    }
++    assert_eq!(live(&mut e, "konnnitiha"), "こんにちは");
 +}
 diff --git a/karukan-im/core/src/core/engine/tests/rewriter.rs b/karukan-im/core/src/core/engine/tests/rewriter.rs
 index f0a85c5..8ba85d0 100644
@@ -3428,6 +3595,9 @@ cat > PKGBUILD <<'PKGBUILD_EOF'
 #   - learning judged in context by the model's own log-probabilities, used in
 #     live conversion and inside sentences; counters after a number (18さい → 18歳);
 #     unchosen commits are no longer learned; word swaps ranked by the model
+#   - beams and swaps the main model finds far-fetched are dropped, a word inside
+#     a compound is never swapped (後輩 → 後ハイ), and a learned spelling replaces
+#     a word the model left in hiragana (わたしは → 私は)
 # Based on the AUR karukan-git PKGBUILD by koh11235813.
 pkgname=karukan-kz-git
 pkgver=0
@@ -3452,8 +3622,8 @@ b2sums=('SKIP'
 _tested=185482700749fd15e58555c331b4e01ce5257344
 
 # Revision of the karukan-kz patch itself; it ends the package version
-# (…kz5), so `pacman -Q karukan-kz-git` tells which patch is installed.
-_kzrev=5
+# (…kz6), so `pacman -Q karukan-kz-git` tells which patch is installed.
+_kzrev=6
 
 # Upstream layout, relative to the repository root
 _crate="karukan-im/fcitx5"
