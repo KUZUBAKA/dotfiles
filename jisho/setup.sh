@@ -27,7 +27,7 @@ readonly USER_DICTS="$DATA/user_dicts"
 readonly OFFICIAL_URL="https://github.com/togatoga/karukan/releases/latest/download/dict.tgz"
 # The files this package puts into user_dicts (also removed as .bin, from
 # the earlier build-dict.sh, so nothing is loaded twice).
-readonly OUR_DICTS=(05-characters 10-bluearchive 11-jujutsukaisen 12-touhou 13-nichijo 20-yojijukugo)
+readonly OUR_DICTS=(03-counters 05-characters 10-bluearchive 11-jujutsukaisen 12-touhou 13-nichijo 20-yojijukugo 30-works)
 
 update=0
 refresh=0
@@ -58,11 +58,17 @@ if (( ${#missing[@]} )); then
 fi
 
 # --- 2. パッチ入り Karukan ----------------------------------------------------
-if (( update )) || ! pacman -Q karukan-kz-git >/dev/null 2>&1; then
-    say "パッチ入りの Karukan を入れます"
+# このフォルダのパッチは第 KZ_REV 版です。入っている Karukan の版の終わり（…kz5-1 の 5）が
+# 違うときは、--update を付けなくても入れ直します。
+readonly KZ_REV=5
+installed=$(pacman -Q karukan-kz-git 2>/dev/null || true)
+if (( update )) || [[ $installed != *.kz${KZ_REV}-* ]]; then
+    say "パッチ入りの Karukan（パッチ第 ${KZ_REV} 版）を入れます"
     KZ_FROM_SETUP=1 bash "$HERE/karukan-kz-install.sh"
 fi
 pacman -Q karukan-kz-git >/dev/null 2>&1 || die "karukan-kz-git が入っていません。上のエラーを確かめてください。"
+[[ $(pacman -Q karukan-kz-git) == *.kz${KZ_REV}-* ]] \
+    || die "入っている Karukan がパッチ第 ${KZ_REV} 版ではありません: $(pacman -Q karukan-kz-git)。上のエラーを確かめてください。"
 command -v karukan-dict >/dev/null || die "karukan-dict が見つかりません。bash setup.sh --update で入れ直してください。"
 say "Karukan: $(pacman -Q karukan-kz-git)"
 

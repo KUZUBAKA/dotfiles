@@ -21,10 +21,13 @@
 #   8. 打った読みとぴったり同じ読みの候補だけを出す（あ → あわせて は出ない）。設定 prediction
 #   9. ひらがなで打った読みに英字だけの候補を出さない（かい → KAI は出ない）。設定 alphabet_candidates
 #  10. ＠ で始まる読み（＠こいし）は、辞書のキャラクター一覧だけを出す
+#  11. 学習した変換を、AI が文脈を見て使うかどうか決める（18 の後ろの さい は 再 ではなく 歳）。
+#      ライブ変換でも、文の中の単語にも学習を使う。数字の後ろは助数詞の辞書（〈数〉さい → 歳）を優先。
+#      自分で選んでいない変換（ライブ変換のまま Enter）は学習しない。
 set -euo pipefail
 
 readonly KZ_VERSION="1854827"
-readonly PATCH_SHA256="76845f88c5f8d7e5b820b7956b1ac10d00a8686971fbcc7fcf3087b5493bd0a3"
+readonly PATCH_SHA256="84076ba1b426946d9b56671c0815334950038e949fc07caf7d0dc20a935d3640"
 readonly WORK_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/karukan-kz"
 
 say()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
@@ -61,48 +64,57 @@ cd "$WORK_DIR"
 
 say "パッチを書き出しています（$WORK_DIR）"
 cat > karukan-kz.patch <<'PATCH_EOF'
-From 62929e6d27f75bae03b840d96b003e692077f23b Mon Sep 17 00:00:00 2001
+From 202d204aa8a697fbc8c0dfda6c55a51d762f4de9 Mon Sep 17 00:00:00 2001
 From: karukan-patch <noreply@example.invalid>
 Date: Sat, 7 Nov 2026 23:12:11 +0900
 Subject: [PATCH] =?UTF-8?q?karukan-kz:=20commit=5Fon=5Finput,=20=E7=84=A1?=
  =?UTF-8?q?=E5=A4=89=E6=8F=9B=20kana=20switching,=20exact-before-predictiv?=
  =?UTF-8?q?e=20ranking,=20shared=20dictionaries,=20larger=20dict=20limits,?=
  =?UTF-8?q?=20word=20swaps,=20learned-prefix=20ranking,=20exact-only=20and?=
- =?UTF-8?q?=20no-Latin=20options,=20=EF=BC=A0=20character=20lookups?=
+ =?UTF-8?q?=20no-Latin=20options,=20=EF=BC=A0=20character=20lookups,=20lea?=
+ =?UTF-8?q?rning=20judged=20in=20context=20(model=20scores),=20counters=20?=
+ =?UTF-8?q?after=20numbers?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01QBa6wktjmCU1vbnc5GNtCs
 ---
  karukan-engine/src/dict.rs                    |   6 +-
- karukan-im/core/config/default.toml           |  13 ++
- karukan-im/core/src/config/settings.rs        |  51 +++++
+ karukan-engine/src/kanji/backend.rs           |  25 +
+ karukan-engine/src/kanji/llamacpp.rs          |  77 ++
+ karukan-im/core/config/default.toml           |  13 +
+ karukan-im/core/src/config/settings.rs        |  51 ++
  karukan-im/core/src/core/candidate.rs         |   5 +
- karukan-im/core/src/core/engine/chunk/mod.rs  |  12 +-
- karukan-im/core/src/core/engine/conversion.rs | 194 ++++++++++++++++--
- karukan-im/core/src/core/engine/init.rs       | 123 +++++++----
- karukan-im/core/src/core/engine/input.rs      |   3 +
- karukan-im/core/src/core/engine/mod.rs        |  10 +
- karukan-im/core/src/core/engine/mode.rs       |  87 ++++++++
- karukan-im/core/src/core/engine/swap.rs       | 141 +++++++++++++
- .../src/core/engine/tests/commit_on_input.rs  | 173 ++++++++++++++++
- .../core/src/core/engine/tests/exact_only.rs  | 174 ++++++++++++++++
- .../core/src/core/engine/tests/learning.rs    |  40 ++++
- karukan-im/core/src/core/engine/tests/mod.rs  |  10 +-
- .../core/src/core/engine/tests/muhenkan.rs    | 128 ++++++++++++
+ karukan-im/core/src/core/engine/chunk/mod.rs  |  15 +-
+ karukan-im/core/src/core/engine/conversion.rs | 345 ++++++++-
+ karukan-im/core/src/core/engine/init.rs       | 123 +++-
+ karukan-im/core/src/core/engine/input.rs      |   5 +-
+ karukan-im/core/src/core/engine/mod.rs        |  17 +-
+ karukan-im/core/src/core/engine/mode.rs       |  87 +++
+ karukan-im/core/src/core/engine/model.rs      |  15 +
+ karukan-im/core/src/core/engine/prefer.rs     | 670 ++++++++++++++++++
+ karukan-im/core/src/core/engine/swap.rs       | 177 +++++
+ .../src/core/engine/tests/commit_on_input.rs  | 173 +++++
+ .../core/src/core/engine/tests/exact_only.rs  | 194 +++++
+ .../core/src/core/engine/tests/learning.rs    |  40 ++
+ karukan-im/core/src/core/engine/tests/mod.rs  |  11 +-
+ .../core/src/core/engine/tests/muhenkan.rs    | 128 ++++
+ .../core/src/core/engine/tests/prefer.rs      | 372 ++++++++++
  .../core/src/core/engine/tests/rewriter.rs    |   2 +-
- .../src/core/engine/tests/shared_dicts.rs     |  75 +++++++
- .../src/core/engine/tests/user_dict_order.rs  |  78 +++++++
- .../core/src/core/engine/tests/word_swap.rs   |  61 ++++++
- karukan-im/core/src/core/engine/types.rs      |  28 ++-
+ .../src/core/engine/tests/shared_dicts.rs     |  75 ++
+ .../src/core/engine/tests/user_dict_order.rs  |  78 ++
+ .../core/src/core/engine/tests/word_swap.rs   |  61 ++
+ karukan-im/core/src/core/engine/types.rs      |  28 +-
  karukan-im/core/src/core/keycode.rs           |   2 +
- 22 files changed, 1356 insertions(+), 60 deletions(-)
+ 27 files changed, 2724 insertions(+), 71 deletions(-)
+ create mode 100644 karukan-im/core/src/core/engine/prefer.rs
  create mode 100644 karukan-im/core/src/core/engine/swap.rs
  create mode 100644 karukan-im/core/src/core/engine/tests/commit_on_input.rs
  create mode 100644 karukan-im/core/src/core/engine/tests/exact_only.rs
  create mode 100644 karukan-im/core/src/core/engine/tests/muhenkan.rs
+ create mode 100644 karukan-im/core/src/core/engine/tests/prefer.rs
  create mode 100644 karukan-im/core/src/core/engine/tests/shared_dicts.rs
  create mode 100644 karukan-im/core/src/core/engine/tests/user_dict_order.rs
  create mode 100644 karukan-im/core/src/core/engine/tests/word_swap.rs
@@ -131,6 +143,130 @@ index 957905d..f9a5d26 100644
          if num_entries > MAX_ENTRIES {
              return Err(DictError::Format(format!(
                  "num_entries too large: {} (max {})",
+diff --git a/karukan-engine/src/kanji/backend.rs b/karukan-engine/src/kanji/backend.rs
+index 6fa1a27..7666da8 100644
+--- a/karukan-engine/src/kanji/backend.rs
++++ b/karukan-engine/src/kanji/backend.rs
+@@ -148,6 +148,31 @@ impl KanaKanjiConverter {
+         Ok(candidates)
+     }
+ 
++    /// Log-probability of each of `surfaces` as the conversion of `reading`
++    /// after `context` — how plausible the model itself finds a spelling it
++    /// did not necessarily propose. Higher is likelier; comparable between
++    /// surfaces of the same reading and context.
++    pub fn score(&self, reading: &str, context: &str, surfaces: &[&str]) -> Result<Vec<f32>> {
++        let katakana = hiragana_to_katakana(reading);
++        let prompt = build_jinen_prompt(&katakana, context);
++        let prompt_tokens = self.model.tokenize(&prompt)?;
++        let mut continuations = Vec::with_capacity(surfaces.len());
++        for surface in surfaces {
++            // Tokenized together with the prompt, as the model saw it in
++            // training; a tokenizer that merges across the boundary falls
++            // back to the surface alone.
++            let full = self
++                .model
++                .tokenize(&format!("{prompt}{}", normalize_nfkc(surface)))?;
++            continuations.push(match full.strip_prefix(prompt_tokens.as_slice()) {
++                Some(rest) => rest.to_vec(),
++                None => self.model.tokenize(&normalize_nfkc(surface))?,
++            });
++        }
++        self.model
++            .score_continuations(&prompt_tokens, &continuations)
++    }
++
+     /// Get a human-readable model name for display
+     pub fn model_display_name(&self) -> &str {
+         &self.display_name
+diff --git a/karukan-engine/src/kanji/llamacpp.rs b/karukan-engine/src/kanji/llamacpp.rs
+index 5b39643..8055c3e 100644
+--- a/karukan-engine/src/kanji/llamacpp.rs
++++ b/karukan-engine/src/kanji/llamacpp.rs
+@@ -789,6 +789,83 @@ impl LlamaCppModel {
+         Ok(generated)
+     }
+ 
++    /// Log-probability the model gives each of `continuations` (plus the
++    /// end-of-output token) as the text following `prompt`: forced decoding.
++    /// The prompt is evaluated once and its KV cache shared by every
++    /// continuation, so each one costs only its own few tokens. Higher is
++    /// likelier; values are comparable between continuations of one prompt.
++    pub fn score_continuations(
++        &self,
++        prompt: &[LlamaToken],
++        continuations: &[Vec<LlamaToken>],
++    ) -> Result<Vec<f32>> {
++        if prompt.is_empty() || continuations.is_empty() {
++            return Ok(vec![f32::NEG_INFINITY; continuations.len()]);
++        }
++        let n_seq = continuations.len() + 1;
++        let total: usize = continuations.iter().map(Vec::len).sum();
++        // One row per sequence is reserved, and neither decode may be split
++        // (a split batch couples the sequences).
++        let batch_cap = prompt.len().max(total).max(n_seq) + BATCH_HEADROOM;
++        let n_ctx = ((prompt.len() + total + BATCH_HEADROOM) as u32).max(self.n_ctx);
++        let mut ctx = self.new_context(
++            self.context_params_with_n_ctx(n_ctx)
++                .with_n_seq_max(n_seq.try_into().unwrap_or(u32::MAX))
++                .with_n_batch(batch_cap as u32)
++                .with_n_ubatch(batch_cap as u32),
++        )?;
++        let vocab_size = self.model.n_vocab() as usize;
++        let eos = self.model.vocab().eos();
++        let log_prob = |logits: &[f32], target: LlamaToken| -> f32 {
++            let logits = &logits[..vocab_size.min(logits.len())];
++            let Some(&t) = logits.get(target.0 as usize) else {
++                return f32::NEG_INFINITY;
++            };
++            let max = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
++            let lse = logits.iter().map(|&x| (x - max).exp()).sum::<f32>().ln() + max;
++            t - lse
++        };
++
++        // The prompt, once, in sequence 0: its last position predicts every
++        // continuation's first token.
++        let mut batch = LlamaBatch::new(batch_cap, 1);
++        self.add_input_tokens(&mut batch, prompt)?;
++        ctx.decode(&mut batch).map_err(inference_err)?;
++        let mut scores: Vec<f32> = {
++            let logits = ctx.get_logits_ith(prompt.len() as i32 - 1);
++            continuations
++                .iter()
++                .map(|c| log_prob(logits, c.first().copied().unwrap_or(eos)))
++                .collect()
++        };
++        if total == 0 {
++            return Ok(scores);
++        }
++
++        // Every continuation in its own sequence on top of the shared prompt.
++        batch.clear();
++        let mut rows: Vec<(usize, LlamaToken)> = Vec::with_capacity(total);
++        for (k, continuation) in continuations.iter().enumerate() {
++            if continuation.is_empty() {
++                continue;
++            }
++            let seq = (k + 1) as i32;
++            ctx.copy_kv_cache_seq(0, seq, None, None)
++                .map_err(inference_err)?;
++            for (j, &token) in continuation.iter().enumerate() {
++                batch
++                    .add(token, (prompt.len() + j) as i32, &[seq], true)
++                    .map_err(inference_err)?;
++                rows.push((k, continuation.get(j + 1).copied().unwrap_or(eos)));
++            }
++        }
++        ctx.decode(&mut batch).map_err(inference_err)?;
++        for (row, (k, target)) in rows.into_iter().enumerate() {
++            scores[k] += log_prob(ctx.get_logits_ith(row as i32), target);
++        }
++        Ok(scores)
++    }
++
+     /// Get the EOS token ID from the model
+     pub fn eos_token_id(&self) -> LlamaToken {
+         self.model.vocab().eos()
 diff --git a/karukan-im/core/config/default.toml b/karukan-im/core/config/default.toml
 index 8199f02..9f08d36 100644
 --- a/karukan-im/core/config/default.toml
@@ -241,19 +377,22 @@ index a4e7f0b..dc2266a 100644
      pub fn set_cursor(&mut self, cursor: usize) {
          self.cursor = cursor.min(self.candidates.len().saturating_sub(1));
 diff --git a/karukan-im/core/src/core/engine/chunk/mod.rs b/karukan-im/core/src/core/engine/chunk/mod.rs
-index b46e39b..c97b87e 100644
+index b46e39b..c78c111 100644
 --- a/karukan-im/core/src/core/engine/chunk/mod.rs
 +++ b/karukan-im/core/src/core/engine/chunk/mod.rs
-@@ -127,7 +127,17 @@ impl InputMethodEngine {
+@@ -127,7 +127,20 @@ impl InputMethodEngine {
      ) -> ComposingChunk {
          let converted = if reading.chars().any(is_japanese) {
              let lctx = self.lctx_for(base_ctx, combined);
 -            self.convert_chunk(&reading, &lctx)
 +            let converted = self.convert_chunk(&reading, &lctx);
++            // What was learned, where the context allows it: the whole
++            // chunk, or a word inside it (see `prefer`).
++            let converted = self.apply_preferences(&reading, &lctx, converted);
 +            // `alphabet_candidates = false`: kana typed as るる must not
 +            // turn into lulu on screen; leave it as typed instead.
 +            if !self.config.alphabet_candidates
-+                && super::conversion::is_latin_only(&converted)
++                && super::conversion::is_unwanted_latin(&reading, &converted)
 +                && !super::conversion::is_latin_only(&reading)
 +            {
 +                reading.clone()
@@ -264,10 +403,10 @@ index b46e39b..c97b87e 100644
              reading.clone()
          };
 diff --git a/karukan-im/core/src/core/engine/conversion.rs b/karukan-im/core/src/core/engine/conversion.rs
-index 61f8714..4627893 100644
+index 61f8714..2cec3ed 100644
 --- a/karukan-im/core/src/core/engine/conversion.rs
 +++ b/karukan-im/core/src/core/engine/conversion.rs
-@@ -31,6 +31,42 @@ enum TailConstraint {
+@@ -31,6 +31,72 @@ enum TailConstraint {
      Dead,
  }
  
@@ -278,7 +417,7 @@ index 61f8714..4627893 100644
 +}
 +
 +/// Whether `reading` holds any hiragana or katakana (full or half width).
-+fn has_kana(reading: &str) -> bool {
++pub(super) fn has_kana(reading: &str) -> bool {
 +    reading.chars().any(|c| {
 +        ('\u{3041}'..='\u{309F}').contains(&c)
 +            || ('\u{30A0}'..='\u{30FF}').contains(&c)
@@ -307,10 +446,57 @@ index 61f8714..4627893 100644
 +    letter
 +}
 +
++/// Whether `text` holds a piece of romaji: three or more lowercase Latin
++/// letters in a row with no capital or digit beside them (mimiが好きです,
++/// macoら). Tシャツ, USBメモリ and iPhone do not count.
++pub(super) fn has_romaji_fragment(text: &str) -> bool {
++    let chars: Vec<char> = text.chars().collect();
++    let mut i = 0;
++    while i < chars.len() {
++        if !chars[i].is_ascii_alphanumeric() {
++            i += 1;
++            continue;
++        }
++        let start = i;
++        while i < chars.len() && chars[i].is_ascii_alphanumeric() {
++            i += 1;
++        }
++        let run = &chars[start..i];
++        if run.len() >= 3 && run.iter().all(|c| c.is_ascii_lowercase()) {
++            return true;
++        }
++    }
++    false
++}
++
++/// What `alphabet_candidates = false` keeps out of a kana reading's model
++/// answers: English-only text and romaji fragments.
++pub(super) fn is_unwanted_latin(reading: &str, text: &str) -> bool {
++    is_latin_only(text)
++        || (!reading.chars().any(|c| c.is_ascii_alphabetic()) && has_romaji_fragment(text))
++}
++
  /// Mozc-style width/script annotation for a pure-kana candidate, or `None`
  /// if the text mixes scripts or contains kanji/punctuation. Used to label
  /// `あ` / `ア` / `ｱ` candidates in the conversion list.
-@@ -207,6 +243,14 @@ impl InputMethodEngine {
+@@ -124,6 +190,16 @@ impl InputMethodEngine {
+                 0,
+                 AnnotatedCandidate::new(prev_suggest_text, CandidateSource::Model),
+             );
++        } else if candidates
++            .first()
++            .is_some_and(|c| c.source == CandidateSource::Model)
++            && let Some(at) = candidates.iter().position(|c| c.text == prev_suggest_text)
++        {
++            // Two model answers disagree (live conversion fell back to the
++            // light model, or judged a learned word differently): Space
++            // starts from the text on screen, not from another one.
++            let shown = candidates.remove(at);
++            candidates.insert(0, shown);
+         }
+ 
+         if candidates.is_empty() {
+@@ -207,6 +283,14 @@ impl InputMethodEngine {
          .collect::<Vec<_>>();
          let mut candidates = Vec::new();
          let mut seen = HashSet::new();
@@ -325,7 +511,7 @@ index 61f8714..4627893 100644
  
          // Exact matches, user dictionary first — only when no romaji tail
          // is pending (an exact hit on the base would ignore the typed
-@@ -222,7 +266,7 @@ impl InputMethodEngine {
+@@ -222,7 +306,7 @@ impl InputMethodEngine {
                  if candidates.len() >= limit {
                      break;
                  }
@@ -334,7 +520,7 @@ index 61f8714..4627893 100644
                      candidates.push(AnnotatedCandidate::new(cand.surface.clone(), source));
                  }
              }
-@@ -233,7 +277,8 @@ impl InputMethodEngine {
+@@ -233,7 +317,8 @@ impl InputMethodEngine {
          // rides on the candidate so selecting it commits and records under
          // the right key.
          let constraint = self.tail_constraint(pending);
@@ -344,7 +530,7 @@ index 61f8714..4627893 100644
              && !matches!(constraint, TailConstraint::Dead)
          {
              let mut budget = predictive_limit;
-@@ -253,7 +298,7 @@ impl InputMethodEngine {
+@@ -253,7 +338,7 @@ impl InputMethodEngine {
                      if budget == 0 || candidates.len() >= limit {
                          break;
                      }
@@ -353,7 +539,7 @@ index 61f8714..4627893 100644
                          budget -= 1;
                          candidates.push(
                              AnnotatedCandidate::new(m.candidate.surface.clone(), source)
-@@ -297,7 +342,19 @@ impl InputMethodEngine {
+@@ -297,27 +382,97 @@ impl InputMethodEngine {
          // just means no model candidates: symbol-only and early keystrokes
          // still get dictionary/rewriter/fallback candidates. Loading here
          // synchronously would block the key-event thread on the download.
@@ -374,16 +560,50 @@ index 61f8714..4627893 100644
  
          let hiragana = reading.to_string();
          let katakana = karukan_engine::hiragana_to_katakana(reading);
-@@ -308,14 +365,22 @@ impl InputMethodEngine {
-         // 1. Learning cache candidates (highest priority).
-         //    Force-inserted so they win against duplicate text from later sources.
+ 
++        // What is preferred for the span the model converts (the whole
++        // reading unless it is long or starts with digits): the learned
++        // surface when the text on the left does not argue against it, a
++        // counter after a number (18さい → 18歳), and learned words inside
++        // the model's sentence. Live conversion asks the same questions of
++        // the same span, so Space confirms what was on screen.
++        let use_learning = learning == LearningLookup::Use;
++        let (prefix, span, span_lctx) = self.span_parts(reading);
++        let whole = prefix.is_empty();
++        let span_top: Option<String> = candidates
++            .first()
++            .and_then(|c| c.strip_prefix(prefix.as_str()))
++            .map(str::to_string);
++        let pick = if listed || span.is_empty() {
++            None
++        } else {
++            self.preferred_surface(&span, &span_lctx, span_top.as_deref(), use_learning)
++        };
++        let in_sentence = match (&pick, &span_top) {
++            (None, Some(top)) if !listed => {
++                self.respell_sentence(&span, &span_lctx, top, use_learning, ModelRole::Main)
++            }
++            _ => prefer::SentenceLearning::default(),
++        };
++        let learned_first = matches!(pick, Some((_, CandidateSource::Learning)));
++
+         // Priority: Learning → User Dictionary → Model → System Dictionary → Fallback
+         let mut builder = CandidateBuilder::new();
+ 
+-        // 1. Learning cache candidates (highest priority).
+-        //    Force-inserted so they win against duplicate text from later sources.
++        // 1. Learning cache candidates (highest priority), unless the
++        //    context argues against them: then the model's answer for this
++        //    context leads and they follow it (18|さい: 歳 before a learned 再).
          //    Skipped when the caller asks for a learning-free conversion (Tab key).
+-        if learning == LearningLookup::Use {
 +        //    Only exact matches go first: a learned reading that merely
 +        //    starts with the typed one (るるはその for るる) is a past
 +        //    sentence, not this word, and waits with the other predictive
 +        //    candidates in step 4.
 +        let mut learned_predictive = Vec::new();
-         if learning == LearningLookup::Use {
++        let mut learned_exact = Vec::new();
++        if use_learning {
              for c in self.lookup_learning_candidates(reading) {
                  // Exact matches have reading == input reading; use None to avoid redundancy
                  let cand_reading = c.reading.filter(|r| r != reading);
@@ -393,15 +613,39 @@ index 61f8714..4627893 100644
 -                );
 +                let ac = AnnotatedCandidate::new(c.text, CandidateSource::Learning)
 +                    .with_reading(cand_reading);
-+                if ac.reading.is_none() {
-+                    builder.push_force(ac);
-+                } else {
++                if ac.reading.is_some() {
 +                    learned_predictive.push(ac);
++                } else if whole {
++                    learned_exact.push(ac);
++                } else {
++                    // A whole composition learned as it stands (18さい): the
++                    // span's judgement does not cover it.
++                    builder.push_force(ac);
 +                }
              }
          }
++        if let Some((surface, source)) = &pick {
++            builder.push(AnnotatedCandidate::new(
++                format!("{prefix}{surface}"),
++                *source,
++            ));
++        }
++        if !learned_first
++            && !learned_exact.is_empty()
++            && let Some(best) = candidates.first()
++        {
++            builder.push(AnnotatedCandidate::new(
++                best.clone(),
++                CandidateSource::Model,
++            ));
++        }
++        for ac in learned_exact {
++            builder.push(ac);
++        }
  
-@@ -332,11 +397,39 @@ impl InputMethodEngine {
+         // 2. User dictionary candidates (system dictionary follows the model
+         //    in step 4, so the two are split here).
+@@ -332,11 +487,59 @@ impl InputMethodEngine {
              )
              .into_iter()
              .partition(|ac| ac.source == CandidateSource::UserDictionary);
@@ -431,19 +675,39 @@ index 61f8714..4627893 100644
 +            // One word of the model's best sentence, swapped for its other
 +            // dictionary spellings (何々の旅に → 何々の度に). The dictionaries
 +            // below only match the whole reading, so inside a sentence these
-+            // are the only dictionary alternatives there are.
-+            Some(best) => self
-+                .word_swap_candidates(reading, best)
-+                .into_iter()
-+                .filter(|t| !(drop_latin && is_latin_only(t)))
-+                .collect(),
++            // are the only dictionary alternatives there are. The model
++            // ranks them: its likeliest respelling first.
++            Some(best) => {
++                let swaps: Vec<String> = self
++                    .word_swap_candidates(reading, best, drop_latin)
++                    .into_iter()
++                    .filter(|t| !(drop_latin && is_unwanted_latin(reading, t)))
++                    .collect();
++                self.rank_by_model(&prefix, &span, &span_lctx, swaps)
++            }
 +            None => Vec::new(),
 +        };
-+        candidates.retain(|t| !(drop_latin && is_latin_only(t)));
++        candidates.retain(|t| !(drop_latin && is_unwanted_latin(reading, t)));
++        // Learned words inside the model's sentence: ahead of it when the
++        // context accepts them, right behind it otherwise.
++        let mut respelled: Vec<String> = in_sentence
++            .alternatives
++            .iter()
++            .map(|s| format!("{prefix}{s}"))
++            .collect();
++        if let Some(sentence) = &in_sentence.accepted {
++            candidates.insert(0, format!("{prefix}{sentence}"));
++            respelled.insert(0, candidates[1].clone());
++        }
++        if !candidates.is_empty() {
++            let rest = candidates.split_off(1);
++            candidates.extend(respelled);
++            candidates.extend(rest);
++        }
          if candidates.is_empty() {
              // No literal fallback in emoji mode: `:smile` must not outrank
              // the 😄 surfaced by the rewriter step below.
-@@ -351,9 +444,19 @@ impl InputMethodEngine {
+@@ -351,9 +554,19 @@ impl InputMethodEngine {
                  builder.push(AnnotatedCandidate::new(text, CandidateSource::Model));
              }
          }
@@ -465,7 +729,7 @@ index 61f8714..4627893 100644
              builder.push(ac);
          }
  
-@@ -446,7 +549,11 @@ impl InputMethodEngine {
+@@ -446,7 +659,11 @@ impl InputMethodEngine {
          }
  
          // Prefix match (predictive), narrowed to the kana the tail can
@@ -478,7 +742,7 @@ index 61f8714..4627893 100644
          for (full_reading, surface, _score) in cache.prefix_lookup(reading) {
              if candidates.len() >= max {
                  break;
-@@ -650,10 +757,14 @@ impl InputMethodEngine {
+@@ -650,10 +867,14 @@ impl InputMethodEngine {
                      }
                  }
  
@@ -496,7 +760,7 @@ index 61f8714..4627893 100644
                      return self.refine_through_composing(key);
                  }
  
-@@ -665,6 +776,57 @@ impl InputMethodEngine {
+@@ -665,6 +886,57 @@ impl InputMethodEngine {
          }
      }
  
@@ -554,6 +818,58 @@ index 61f8714..4627893 100644
      /// Feed a refining keystroke (printable char, Backspace) through the
      /// composing path, then re-enter the conversion with the previous
      /// source filter if one was active. With a filter the composing render
+@@ -737,11 +1009,27 @@ impl InputMethodEngine {
+     /// buffer is a `:query`, not a kana reading, and would corrupt the
+     /// kana-keyed cache.
+     pub(super) fn record_learning(&mut self, reading: &str, surface: &str) {
++        self.learn(reading, surface, true);
++    }
++
++    /// A commit nobody chose — Enter on the live conversion, a focus-out —
++    /// is the engine's own answer coming back, not a preference: learning
++    /// it only fills the history with sentences and bare kana (が → が).
++    /// It refreshes an entry that is already there and never adds one.
++    pub(super) fn record_unchosen(&mut self, reading: &str, surface: &str) {
++        self.learn(reading, surface, false);
++    }
++
++    fn learn(&mut self, reading: &str, surface: &str, create: bool) {
+         if self.mode.current() == InputMode::Emoji {
+             return;
+         }
+-        if let Some(cache) = &mut self.learning {
+-            cache.record(reading, surface);
++        let lctx = self.truncate_context_for_api();
++        let (key, surface) = prefer::learning_key(reading, surface, &lctx);
++        if let Some(cache) = &mut self.learning
++            && (create || cache.lookup(&key).iter().any(|(s, _)| *s == surface))
++        {
++            cache.record(&key, &surface);
+         }
+     }
+ 
+@@ -800,10 +1088,17 @@ impl InputMethodEngine {
+         let Some(reading) = self.state.reading().map(str::to_string) else {
+             return EngineResult::consumed();
+         };
+-        let removed = self
+-            .learning
+-            .as_mut()
+-            .is_some_and(|cache| cache.remove_suggestion(&reading, &surface));
++        // The entry may be a counter learned after a number (see
++        // `prefer::learning_key`): the same row, under its own key.
++        let lctx = self.truncate_context_for_api();
++        let (number_key, number_surface) = prefer::learning_key(&reading, &surface, &lctx);
++        let marked = format!("{}{reading}", prefer::NUMBER_MARK);
++        let removed = self.learning.as_mut().is_some_and(|cache| {
++            let plain = cache.remove_suggestion(&reading, &surface);
++            let keyed = cache.remove_suggestion(&number_key, &number_surface);
++            let after_number = cache.remove_suggestion(&marked, &surface);
++            plain || keyed || after_number
++        });
+         if !removed {
+             return EngineResult::consumed();
+         }
 diff --git a/karukan-im/core/src/core/engine/init.rs b/karukan-im/core/src/core/engine/init.rs
 index addd840..9dafaab 100644
 --- a/karukan-im/core/src/core/engine/init.rs
@@ -707,7 +1023,7 @@ index addd840..9dafaab 100644
 +    Some(dict)
  }
 diff --git a/karukan-im/core/src/core/engine/input.rs b/karukan-im/core/src/core/engine/input.rs
-index a046768..4e8f9fd 100644
+index a046768..5ca1b28 100644
 --- a/karukan-im/core/src/core/engine/input.rs
 +++ b/karukan-im/core/src/core/engine/input.rs
 @@ -32,8 +32,11 @@ impl InputMethodEngine {
@@ -722,19 +1038,48 @@ index a046768..4e8f9fd 100644
              && (self.mode.current() != InputMode::Alphabet
                  || karukan_engine::contains_kana(&full_reading));
          let candidates = if convert {
+@@ -399,7 +402,7 @@ impl InputMethodEngine {
+                 .with_action(EngineAction::HideAuxText);
+         }
+ 
+-        self.record_learning(&reading, &text);
++        self.record_unchosen(&reading, &text);
+         self.end_composition();
+ 
+         // HideCandidates is required here: the auto-suggest/live-conversion
 diff --git a/karukan-im/core/src/core/engine/mod.rs b/karukan-im/core/src/core/engine/mod.rs
-index 6c6179e..61700a2 100644
+index 6c6179e..36bc30a 100644
 --- a/karukan-im/core/src/core/engine/mod.rs
 +++ b/karukan-im/core/src/core/engine/mod.rs
-@@ -15,6 +15,7 @@ mod input_buffer;
+@@ -14,7 +14,9 @@ mod input;
+ mod input_buffer;
  mod mode;
  mod model;
++mod prefer;
  mod strategy;
 +mod swap;
  mod types;
  
  pub use types::*;
-@@ -619,6 +620,15 @@ impl InputMethodEngine {
+@@ -146,6 +148,9 @@ pub struct InputMethodEngine {
+     /// LRU cache of model conversion results keyed by reading + lctx +
+     /// strategy. Content-addressed, so it survives commits and resets.
+     conversion_cache: ConversionCache,
++    /// Model log-probabilities already computed (see `prefer`): what the
++    /// model thinks of a surface it did not necessarily propose.
++    score_cache: prefer::ScoreCache,
+     /// Suppresses the auto-suggest model call while a conversion detours
+     /// through the composing path and throws the render away. Owned by
+     /// `in_composing`, which sets and clears it around the one call.
+@@ -186,6 +191,7 @@ impl InputMethodEngine {
+             chunks: Vec::new(),
+             chunk_breaks: Vec::new(),
+             conversion_cache: ConversionCache::default(),
++            score_cache: prefer::ScoreCache::default(),
+             suppress_suggest: false,
+             shown_suggestions: CandidateList::default(),
+             dicts: Dictionaries::default(),
+@@ -619,6 +625,15 @@ impl InputMethodEngine {
              return EngineResult::not_consumed();
          }
  
@@ -750,6 +1095,15 @@ index 6c6179e..61700a2 100644
          // Ctrl+Shift+L: toggle live conversion (works in all states)
          if key.modifiers.control_key
              && key.modifiers.shift_key
+@@ -701,7 +716,7 @@ impl InputMethodEngine {
+             InputState::Empty => String::new(),
+             InputState::Composing { .. } => {
+                 let (reading, text) = self.resolve_composing_commit();
+-                self.record_learning(&reading, &text);
++                self.record_unchosen(&reading, &text);
+                 self.end_composition();
+                 text
+             }
 diff --git a/karukan-im/core/src/core/engine/mode.rs b/karukan-im/core/src/core/engine/mode.rs
 index f9bade7..9739eb6 100644
 --- a/karukan-im/core/src/core/engine/mode.rs
@@ -846,12 +1200,714 @@ index f9bade7..9739eb6 100644
 +        }
 +    }
  }
+diff --git a/karukan-im/core/src/core/engine/model.rs b/karukan-im/core/src/core/engine/model.rs
+index d509d60..5294b9a 100644
+--- a/karukan-im/core/src/core/engine/model.rs
++++ b/karukan-im/core/src/core/engine/model.rs
+@@ -279,6 +279,21 @@ impl InputMethodEngine {
+     /// the cost stays bounded however long the reading grows. An empty
+     /// result means "the model produced nothing"; a candidate equal to the
+     /// reading is a real answer (kana-only words convert to themselves).
++    /// How Space splits `reading` for the model: the text already converted
++    /// on the chunk grid before the beamed span, the span's reading (empty
++    /// when the reading ends outside Japanese) and the span's left context.
++    /// Live conversion converts that same span with that same context, so
++    /// what is preferred for it (see `prefer`) agrees between the two.
++    pub(super) fn span_parts(&mut self, reading: &str) -> (String, String, String) {
++        let base_ctx = self.truncate_context_for_api();
++        let chars: Vec<char> = reading.chars().collect();
++        let span_start = self.beam_span_start(&chars);
++        let prefix = self.convert_on_chunk_grid(&chars[..span_start], &base_ctx);
++        let span: String = chars[span_start..].iter().collect();
++        let lctx = self.lctx_for(&base_ctx, &prefix);
++        (prefix, span, lctx)
++    }
++
+     pub(super) fn model_candidates(&mut self, reading: &str, num_candidates: usize) -> Vec<String> {
+         if !karukan_engine::contains_kana(reading) {
+             return Vec::new();
+diff --git a/karukan-im/core/src/core/engine/prefer.rs b/karukan-im/core/src/core/engine/prefer.rs
+new file mode 100644
+index 0000000..60c9f29
+--- /dev/null
++++ b/karukan-im/core/src/core/engine/prefer.rs
+@@ -0,0 +1,670 @@
++//! What the user prefers, judged in context.
++//!
++//! Learning records what was chosen for a reading, never where: さい → 再
++//! says nothing about 「18さい」. Putting the learned surface first no
++//! matter what makes it wrong exactly where the text around it decides
++//! the word, and leaving it out of live conversion makes it useless while
++//! typing. Here the model is asked to judge: its log-probability for the
++//! learned surface and for its own answer, once with the text on the left
++//! and once without. Learning is the preference *without* context, so it
++//! wins unless the context itself argues against it — unless the model's
++//! margin for its own answer grows by more than a threshold once the
++//! context is there (18|さい: 再 loses 3 nats to 才; 今日は|みみ: ミミ loses
++//! nothing).
++//!
++//! The same judgement puts a learned word inside a sentence
++//! (耳が好きです → ミミが好きです) when the sentence's word lines up with
++//! the reading, stands on its own, and is one of the dictionary's
++//! spellings for it. After a number, the user dictionaries' counter
++//! entries (`〈数〉さい` → 歳) are preferred over the model's 才.
++//!
++//! Live conversion and Space both go through here, so what is shown while
++//! typing is what Space puts first.
++
++use std::collections::HashMap;
++
++use super::*;
++
++/// Largest growth of the model's margin against a learned surface that
++/// still counts as "the context does not object": for a whole reading,
++/// and for one word inside a sentence (where a name in katakana is
++/// always a little less expected than a common noun).
++const CONTEXT_SHIFT_MAX: f32 = 2.0;
++const SENTENCE_SHIFT_MAX: f32 = 3.0;
++/// Whatever the growth, a learned surface this far behind the model's own
++/// answer in context is not what was meant. (A persona that pushes the
++/// model towards kanji widens the margin even without context, which
++/// makes the growth alone look small.)
++const CONTEXT_GAP_MAX: f32 = 5.5;
++/// Learned surfaces judged per reading.
++const MAX_LEARNED_JUDGED: usize = 3;
++/// Learned words tried, and replaced, inside one sentence.
++const MAX_WORDS_TRIED: usize = 4;
++const MAX_WORDS_REPLACED: usize = 2;
++/// Reading length of a learned word looked for inside a sentence.
++const MIN_INNER_WORD_CHARS: usize = 2;
++const MAX_INNER_WORD_CHARS: usize = 12;
++/// Reading chars one kanji may stand for when aligning (承る = うけたまわ).
++const MAX_KANJI_READING_CHARS: usize = 8;
++/// Longest counter reading looked for at the start of a sentence.
++const MAX_COUNTER_CHARS: usize = 8;
++/// User-dictionary readings for counters after a number: `〈数〉さい`.
++pub(super) const NUMBER_MARK: &str = "〈数〉";
++/// Entries kept in the score cache before it is emptied.
++const SCORE_CACHE_CAPACITY: usize = 8192;
++
++/// Cache of model log-probabilities, keyed by the model, the reading, the
++/// left context fed to the model (persona included) and the surface.
++#[derive(Default)]
++pub(in crate::core) struct ScoreCache {
++    entries: HashMap<(ModelRole, String, String, String), f32>,
++}
++
++impl ScoreCache {
++    fn get(&self, model: ModelRole, reading: &str, lctx: &str, surface: &str) -> Option<f32> {
++        self.entries
++            .get(&(
++                model,
++                reading.to_string(),
++                lctx.to_string(),
++                surface.to_string(),
++            ))
++            .copied()
++    }
++
++    pub(in crate::core) fn insert(
++        &mut self,
++        model: ModelRole,
++        reading: &str,
++        lctx: &str,
++        surface: &str,
++        score: f32,
++    ) {
++        if self.entries.len() >= SCORE_CACHE_CAPACITY {
++            self.entries.clear();
++        }
++        self.entries.insert(
++            (
++                model,
++                reading.to_string(),
++                lctx.to_string(),
++                surface.to_string(),
++            ),
++            score,
++        );
++    }
++}
++
++/// What a learned word inside a sentence leads to.
++#[derive(Default)]
++pub(super) struct SentenceLearning {
++    /// The sentence with the learned words the context accepts.
++    pub accepted: Option<String>,
++    /// Sentences with a learned word the context argues against: worth a
++    /// place in the list, not the first one.
++    pub alternatives: Vec<String>,
++}
++
++impl InputMethodEngine {
++    /// The left context exactly as the model receives it (the persona is
++    /// prepended, as in `run_kana_kanji_conversion`).
++    fn scoring_lctx(&self, api_context: &str) -> String {
++        if self.config.persona.is_empty() {
++            api_context.to_string()
++        } else {
++            format!("{} {}", self.config.persona, api_context)
++        }
++    }
++
++    /// The model's log-probability of each of `surfaces` as the conversion
++    /// of `reading` after `api_context`. `None` when no model can say
++    /// (still loading, or the call failed) and the cache does not hold
++    /// them all.
++    pub(super) fn model_scores(
++        &mut self,
++        reading: &str,
++        api_context: &str,
++        surfaces: &[&str],
++    ) -> Option<Vec<f32>> {
++        self.model_scores_from(ModelRole::Main, reading, api_context, surfaces)
++    }
++
++    /// [`Self::model_scores`] from a given model. Live conversion on a
++    /// machine too slow for the main model judges its sentences with the
++    /// light one — the model that wrote them.
++    fn model_scores_from(
++        &mut self,
++        model: ModelRole,
++        reading: &str,
++        api_context: &str,
++        surfaces: &[&str],
++    ) -> Option<Vec<f32>> {
++        let lctx = self.scoring_lctx(api_context);
++        let missing: Vec<&str> = surfaces
++            .iter()
++            .copied()
++            .filter(|s| self.score_cache.get(model, reading, &lctx, s).is_none())
++            .collect();
++        if !missing.is_empty() {
++            let converter = match model {
++                ModelRole::Main => self.converters.kanji.as_ref(),
++                ModelRole::Light => self.converters.light_kanji.as_ref(),
++            }?;
++            let scores = converter.score(reading, &lctx, &missing).ok()?;
++            for (surface, score) in missing.iter().zip(scores) {
++                self.score_cache
++                    .insert(model, reading, &lctx, surface, score);
++            }
++        }
++        surfaces
++            .iter()
++            .map(|s| self.score_cache.get(model, reading, &lctx, s))
++            .collect()
++    }
++
++    /// The model's single best conversion of `reading` after `api_context`.
++    fn model_best(&mut self, reading: &str, api_context: &str) -> Option<String> {
++        self.run_kana_kanji_conversion(reading, api_context, 1)
++            .into_iter()
++            .next()
++    }
++
++    /// Learned surfaces for exactly `reading`, best first.
++    fn learned_surfaces(&self, reading: &str) -> Vec<String> {
++        let Some(cache) = &self.learning else {
++            return Vec::new();
++        };
++        let drop_latin = !self.config.alphabet_candidates && conversion::has_kana(reading);
++        cache
++            .lookup(reading)
++            .into_iter()
++            .map(|(surface, _)| surface)
++            .filter(|s| !(drop_latin && conversion::is_latin_only(s)))
++            .take(MAX_LEARNED_JUDGED)
++            .collect()
++    }
++
++    /// The learned surface to use for `reading` after `lctx`, if the
++    /// context does not argue against it. `model_top` is the model's best
++    /// answer with that context when the caller already has it.
++    pub(super) fn learned_pick(
++        &mut self,
++        reading: &str,
++        lctx: &str,
++        model_top: Option<&str>,
++    ) -> Option<String> {
++        // What was chosen after a number before is the choice after this
++        // one: such choices are kept apart (`learning_key`), so 18歳 never
++        // changes a bare さい, nor the other way round.
++        if ends_with_digit(lctx)
++            && let Some(surface) = self
++                .learned_surfaces(&format!("{NUMBER_MARK}{reading}"))
++                .into_iter()
++                .next()
++        {
++            return Some(surface);
++        }
++        let learned = self.learned_surfaces(reading);
++        let first = learned.first()?.clone();
++        // No text on the left: the learned choice is all there is to go by.
++        if lctx.trim().is_empty() {
++            return Some(first);
++        }
++        let Some(top) = model_top
++            .map(str::to_string)
++            .or_else(|| self.model_best(reading, lctx))
++        else {
++            return Some(first);
++        };
++        if first == top {
++            return Some(first);
++        }
++        let Some(bare_top) = self.model_best(reading, "") else {
++            return Some(first);
++        };
++        let with_ctx: Vec<&str> = std::iter::once(top.as_str())
++            .chain(learned.iter().map(String::as_str))
++            .collect();
++        let bare: Vec<&str> = std::iter::once(bare_top.as_str())
++            .chain(learned.iter().map(String::as_str))
++            .collect();
++        let (Some(with_ctx), Some(bare)) = (
++            self.model_scores(reading, lctx, &with_ctx),
++            self.model_scores(reading, "", &bare),
++        ) else {
++            return Some(first);
++        };
++        learned
++            .iter()
++            .enumerate()
++            .find(|(i, surface)| {
++                let gap = with_ctx[0] - with_ctx[i + 1];
++                let shift = gap - (bare[0] - bare[i + 1]);
++                **surface == top || (shift <= CONTEXT_SHIFT_MAX && gap <= CONTEXT_GAP_MAX)
++            })
++            .map(|(_, surface)| surface.clone())
++    }
++
++    /// After a number, the user dictionaries' counter for `reading`
++    /// (`〈数〉さい` → 歳). Several entries (かい → 回, 階) are left to the
++    /// model to choose between.
++    pub(super) fn counter_pick(&mut self, reading: &str, lctx: &str) -> Option<String> {
++        if !ends_with_digit(lctx) {
++            return None;
++        }
++        let surfaces: Vec<String> = self
++            .dicts
++            .user
++            .as_ref()?
++            .exact_match_search(&format!("{NUMBER_MARK}{reading}"))?
++            .candidates
++            .iter()
++            .map(|c| c.surface.clone())
++            .collect();
++        let first = surfaces.first()?.clone();
++        if surfaces.len() == 1 {
++            return Some(first);
++        }
++        let refs: Vec<&str> = surfaces.iter().map(String::as_str).collect();
++        let Some(scores) = self.model_scores(reading, lctx, &refs) else {
++            return Some(first);
++        };
++        scores
++            .iter()
++            .enumerate()
++            .max_by(|a, b| a.1.total_cmp(b.1))
++            .map(|(i, _)| surfaces[i].clone())
++    }
++
++    /// The surface to put first for the whole of `reading` after `lctx`:
++    /// what was learned, when the context allows it, else a counter after
++    /// a number. `use_learning` is off for the learning-free conversion.
++    pub(super) fn preferred_surface(
++        &mut self,
++        reading: &str,
++        lctx: &str,
++        model_top: Option<&str>,
++        use_learning: bool,
++    ) -> Option<(String, CandidateSource)> {
++        if use_learning && let Some(surface) = self.learned_pick(reading, lctx, model_top) {
++            return Some((surface, CandidateSource::Learning));
++        }
++        self.counter_pick(reading, lctx)
++            .map(|surface| (surface, CandidateSource::UserDictionary))
++    }
++
++    /// Live conversion's text for one chunk: `model` (the model's
++    /// conversion of `reading` after `lctx`) unless something is preferred
++    /// — for the whole chunk, or for a learned word inside it.
++    pub(super) fn apply_preferences(&mut self, reading: &str, lctx: &str, model: String) -> String {
++        if conversion::is_character_query(reading) {
++            return model;
++        }
++        if let Some((surface, _)) = self.preferred_surface(reading, lctx, Some(&model), true) {
++            return surface;
++        }
++        // Judging a word inside a sentence is one more model pass per
++        // keystroke: where live conversion has fallen back to the light
++        // model for speed, the light model judges too.
++        let judge =
++            if self.metrics.adaptive_use_light_model && self.converters.light_kanji.is_some() {
++                ModelRole::Light
++            } else {
++                ModelRole::Main
++            };
++        self.respell_sentence(reading, lctx, &model, true, judge)
++            .accepted
++            .unwrap_or(model)
++    }
++
++    /// `sentence` (the model's conversion of `reading` after `lctx`) with
++    /// what is preferred inside it: a counter right after a number, then
++    /// learned words.
++    pub(super) fn respell_sentence(
++        &mut self,
++        reading: &str,
++        lctx: &str,
++        sentence: &str,
++        use_learning: bool,
++        judge: ModelRole,
++    ) -> SentenceLearning {
++        let counted = self.counter_in_sentence(reading, lctx, sentence);
++        let base = counted.as_deref().unwrap_or(sentence);
++        let mut result = if use_learning {
++            self.learned_in_sentence(reading, lctx, base, judge)
++        } else {
++            SentenceLearning::default()
++        };
++        if result.accepted.is_none() {
++            result.accepted = counted;
++        }
++        result
++    }
++
++    /// After a number, a counter that opens a longer reading
++    /// (18|さいのとき): the model's 才の時 becomes 歳の時. Only counters
++    /// with a single spelling, and only where the sentence's first word
++    /// is certain to be that counter (see `replace_aligned`).
++    fn counter_in_sentence(&self, reading: &str, lctx: &str, sentence: &str) -> Option<String> {
++        if !ends_with_digit(lctx) {
++            return None;
++        }
++        let user = self.dicts.user.as_ref()?;
++        let r: Vec<char> = reading.chars().collect();
++        for len in (1..r.len().min(MAX_COUNTER_CHARS + 1)).rev() {
++            let word: String = r[..len].iter().collect();
++            let Some(found) = user.exact_match_search(&format!("{NUMBER_MARK}{word}")) else {
++                continue;
++            };
++            let [counter] = found.candidates else {
++                continue;
++            };
++            if sentence.starts_with(counter.surface.as_str()) {
++                return None;
++            }
++            if let Some(out) = self.replace_aligned(&r, 0, len, &word, &counter.surface, sentence) {
++                return Some(out);
++            }
++        }
++        None
++    }
++
++    /// Learned words inside `sentence`, the model's conversion of
++    /// `reading` after `lctx`. A word is replaced only when it is certain
++    /// which part of the sentence it is: the sentence spells it with one
++    /// of the dictionary's surfaces for that reading (or in katakana), the
++    /// text on both sides lines up with the rest of the reading, and the
++    /// word does not run on into a neighbour of the same script (最 in 最高
++    /// is not さい on its own). The `judge` model then decides as for a
++    /// whole reading.
++    fn learned_in_sentence(
++        &mut self,
++        reading: &str,
++        lctx: &str,
++        sentence: &str,
++        judge: ModelRole,
++    ) -> SentenceLearning {
++        let mut result = SentenceLearning::default();
++        let r: Vec<char> = reading.chars().collect();
++        if self.learning.is_none() || r.len() <= MIN_INNER_WORD_CHARS {
++            return result;
++        }
++
++        // Learned words whose reading occurs in the reading, strongest first.
++        let mut words: Vec<(usize, usize, String, f64)> = Vec::new();
++        if let Some(cache) = &self.learning {
++            for start in 0..r.len() {
++                let longest = MAX_INNER_WORD_CHARS.min(r.len() - start);
++                for len in MIN_INNER_WORD_CHARS..=longest {
++                    if len == r.len() {
++                        continue;
++                    }
++                    let word: String = r[start..start + len].iter().collect();
++                    if let Some((surface, score)) = cache.lookup(&word).into_iter().next() {
++                        words.push((start, len, surface, score));
++                    }
++                }
++            }
++        }
++        words.sort_by(|a, b| b.3.total_cmp(&a.3));
++        words.truncate(MAX_WORDS_TRIED);
++
++        let mut current = sentence.to_string();
++        let mut replaced = 0;
++        for (start, len, learned, _) in words {
++            if replaced >= MAX_WORDS_REPLACED {
++                break;
++            }
++            let word: String = r[start..start + len].iter().collect();
++            let Some(candidate) = self.replace_aligned(&r, start, len, &word, &learned, &current)
++            else {
++                continue;
++            };
++            // Learning that only repeats the model's own default tells
++            // nothing the model did not weigh when it chose otherwise here.
++            let Some(bare_top) = self.model_best(&word, "") else {
++                result.alternatives.push(candidate);
++                continue;
++            };
++            if bare_top == learned {
++                continue;
++            }
++            let (Some(with_ctx), Some(bare)) = (
++                self.model_scores_from(
++                    judge,
++                    reading,
++                    lctx,
++                    &[current.as_str(), candidate.as_str()],
++                ),
++                self.model_scores_from(judge, &word, "", &[bare_top.as_str(), learned.as_str()]),
++            ) else {
++                result.alternatives.push(candidate);
++                continue;
++            };
++            let gap = with_ctx[0] - with_ctx[1];
++            let shift = gap - (bare[0] - bare[1]);
++            if shift <= SENTENCE_SHIFT_MAX && gap <= CONTEXT_GAP_MAX {
++                current = candidate;
++                replaced += 1;
++            } else {
++                result.alternatives.push(candidate);
++            }
++        }
++        if current != sentence {
++            result.accepted = Some(current);
++        }
++        result
++    }
++
++    /// `sentence` with the word read `word` at `r[start..start + len]`
++    /// respelled as `learned`, when that word can be located for certain.
++    fn replace_aligned(
++        &self,
++        r: &[char],
++        start: usize,
++        len: usize,
++        word: &str,
++        learned: &str,
++        sentence: &str,
++    ) -> Option<String> {
++        let katakana = karukan_engine::hiragana_to_katakana(word);
++        let mut spellings: Vec<String> = vec![katakana];
++        for dict in [self.dicts.user.as_deref(), self.dicts.system.as_deref()]
++            .into_iter()
++            .flatten()
++        {
++            if let Some(found) = dict.exact_match_search(word) {
++                spellings.extend(found.candidates.iter().map(|c| c.surface.clone()));
++            }
++        }
++        let s: Vec<char> = sentence.chars().collect();
++        let learned_chars: Vec<char> = learned.chars().collect();
++        // Longer spellings first: 砂狼シロコ before シロコ.
++        spellings.sort_by_key(|w| std::cmp::Reverse(w.chars().count()));
++        spellings.dedup();
++        for spelling in spellings {
++            let w: Vec<char> = spelling.chars().collect();
++            if w.is_empty()
++                || w.len() > s.len()
++                || w == learned_chars
++                || w.iter().all(|&c| script(c) == Script::Hira)
++            {
++                continue;
++            }
++            for at in 0..=s.len().saturating_sub(w.len()) {
++                if s[at..at + w.len()] != w[..] {
++                    continue;
++                }
++                let (before, after) = (&s[..at], &s[at + w.len()..]);
++                if stands_alone(before, &w, after)
++                    && aligns(before, &r[..start])
++                    && aligns(after, &r[start + len..])
++                {
++                    let mut out: String = before.iter().collect();
++                    out.push_str(learned);
++                    out.extend(after.iter());
++                    return Some(out);
++                }
++            }
++        }
++        None
++    }
++}
++
++fn is_digit(c: char) -> bool {
++    c.is_ascii_digit() || ('０'..='９').contains(&c)
++}
++
++fn ends_with_digit(text: &str) -> bool {
++    text.chars().next_back().is_some_and(is_digit)
++}
++
++/// The key and surface a commit is learned under. A choice made right
++/// after a number is a counter (18歳, 3回): it is kept under
++/// `〈数〉` + reading, without the number, so it serves every number and
++/// leaves the bare reading alone.
++pub(super) fn learning_key(reading: &str, surface: &str, lctx: &str) -> (String, String) {
++    if let Some((digits, rest)) = split_number(reading)
++        && let Some(tail) = surface.strip_prefix(digits)
++        && !tail.is_empty()
++    {
++        return (format!("{NUMBER_MARK}{rest}"), tail.to_string());
++    }
++    if ends_with_digit(lctx) && !reading.starts_with(NUMBER_MARK) {
++        return (format!("{NUMBER_MARK}{reading}"), surface.to_string());
++    }
++    (reading.to_string(), surface.to_string())
++}
++
++/// The leading run of digits of `reading` and the rest, when both are
++/// there and the rest holds no further digit: 18さい → (18, さい).
++pub(super) fn split_number(reading: &str) -> Option<(&str, &str)> {
++    let end = reading
++        .char_indices()
++        .find(|&(_, c)| !is_digit(c))
++        .map(|(i, _)| i)?;
++    let (digits, rest) = reading.split_at(end);
++    (!digits.is_empty() && !rest.chars().any(is_digit)).then_some((digits, rest))
++}
++
++#[derive(Clone, Copy, PartialEq, Eq)]
++enum Script {
++    Hira,
++    Kata,
++    Kanji,
++    Other,
++}
++
++fn script(c: char) -> Script {
++    match c {
++        '\u{3041}'..='\u{309F}' => Script::Hira,
++        '\u{30A1}'..='\u{30FA}' | '\u{30FC}'..='\u{30FF}' | '\u{FF66}'..='\u{FF9F}' => Script::Kata,
++        '\u{4E00}'..='\u{9FFF}'
++        | '\u{3400}'..='\u{4DBF}'
++        | '\u{F900}'..='\u{FAFF}'
++        | '々'
++        | '〆' => Script::Kanji,
++        _ => Script::Other,
++    }
++}
++
++/// Whether `w` is a word of its own between `before` and `after`: it must
++/// not continue a kanji or katakana run on either side (最|高, スーパー|マン),
++/// nor sit against letters or digits.
++fn stands_alone(before: &[char], w: &[char], after: &[char]) -> bool {
++    let joins = |a: char, b: char| match (script(a), script(b)) {
++        (Script::Kanji, Script::Kanji) | (Script::Kata, Script::Kata) => true,
++        (Script::Other, Script::Other) => a.is_alphanumeric() && b.is_alphanumeric(),
++        _ => false,
++    };
++    let left = before
++        .last()
++        .zip(w.first())
++        .is_some_and(|(&a, &b)| joins(a, b));
++    let right = w
++        .last()
++        .zip(after.first())
++        .is_some_and(|(&a, &b)| joins(a, b));
++    !left && !right
++}
++
++/// Whether `text` can be read as exactly `reading`: kana must match the
++/// reading letter for letter, a kanji stands for one or more reading
++/// chars, anything else matches itself or up to a few reading chars.
++fn aligns(text: &[char], reading: &[char]) -> bool {
++    fn go(text: &[char], reading: &[char], memo: &mut HashMap<(usize, usize), bool>) -> bool {
++        let Some((&c, rest)) = text.split_first() else {
++            return reading.is_empty();
++        };
++        let key = (text.len(), reading.len());
++        if let Some(&known) = memo.get(&key) {
++            return known;
++        }
++        let kana = match script(c) {
++            Script::Hira => Some(c),
++            Script::Kata if c != 'ー' => karukan_engine::katakana_to_hiragana(&c.to_string())
++                .chars()
++                .next(),
++            Script::Kata => Some(c),
++            _ => None,
++        };
++        let ok = match kana {
++            Some(k) => reading.first() == Some(&k) && go(rest, &reading[1..], memo),
++            None => {
++                let literal = reading.first() == Some(&c) && go(rest, &reading[1..], memo);
++                let (min, max) = if script(c) == Script::Kanji {
++                    (1, MAX_KANJI_READING_CHARS)
++                } else {
++                    (0, 3)
++                };
++                literal || (min..=max.min(reading.len())).any(|n| go(rest, &reading[n..], memo))
++            }
++        };
++        memo.insert(key, ok);
++        ok
++    }
++    go(text, reading, &mut HashMap::new())
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn chars(s: &str) -> Vec<char> {
++        s.chars().collect()
++    }
++
++    #[test]
++    fn alignment_follows_kana_and_lets_kanji_stretch() {
++        assert!(aligns(&chars("が好きです"), &chars("がすきです")));
++        assert!(aligns(&chars("その"), &chars("その")));
++        assert!(aligns(&chars("スーパー"), &chars("すーぱー")));
++        assert!(aligns(&chars(""), &chars("")));
++        assert!(!aligns(&chars("が好きです"), &chars("をすきです")));
++        assert!(!aligns(&chars("好"), &chars("")));
++        assert!(!aligns(&chars(""), &chars("す")));
++    }
++
++    #[test]
++    fn a_word_inside_a_compound_does_not_stand_alone() {
++        assert!(!stands_alone(&chars(""), &chars("最"), &chars("高")));
++        assert!(!stands_alone(&chars("再"), &chars("入学"), &chars("")));
++        assert!(!stands_alone(
++            &chars("スーパー"),
++            &chars("マン"),
++            &chars("")
++        ));
++        assert!(stands_alone(&chars(""), &chars("耳"), &chars("が好き")));
++        assert!(stands_alone(&chars("その"), &chars("際"), &chars("は")));
++        assert!(stands_alone(&chars("、"), &chars("耳"), &chars("。")));
++    }
++
++    #[test]
++    fn number_split() {
++        assert_eq!(split_number("18さい"), Some(("18", "さい")));
++        assert_eq!(split_number("１８さい"), Some(("１８", "さい")));
++        assert_eq!(split_number("さい"), None);
++        assert_eq!(split_number("18"), None);
++        assert_eq!(split_number("18さい2"), None);
++    }
++}
 diff --git a/karukan-im/core/src/core/engine/swap.rs b/karukan-im/core/src/core/engine/swap.rs
 new file mode 100644
-index 0000000..c7ee615
+index 0000000..cfb2323
 --- /dev/null
 +++ b/karukan-im/core/src/core/engine/swap.rs
-@@ -0,0 +1,141 @@
+@@ -0,0 +1,177 @@
 +//! Word-swap candidates: dictionary alternatives for one word inside the
 +//! model's sentence.
 +//!
@@ -887,17 +1943,49 @@ index 0000000..c7ee615
 +    /// Candidates made from `sentence` (the model's best conversion of
 +    /// `reading`) by swapping one word for its other dictionary spellings.
 +    /// The user dictionary is consulted before the system one.
-+    pub(super) fn word_swap_candidates(&self, reading: &str, sentence: &str) -> Vec<String> {
++    pub(super) fn word_swap_candidates(
++        &self,
++        reading: &str,
++        sentence: &str,
++        skip_latin: bool,
++    ) -> Vec<String> {
 +        let dicts: Vec<&Dictionary> = [self.dicts.user.as_deref(), self.dicts.system.as_deref()]
 +            .into_iter()
 +            .flatten()
 +            .collect();
-+        word_swaps(&dicts, reading, sentence)
++        word_swaps(&dicts, reading, sentence, skip_latin)
++    }
++
++    /// `texts` (conversions of `prefix` + `span`'s reading) in the order
++    /// the model finds them likely after `lctx`; unchanged when no model
++    /// can say.
++    pub(super) fn rank_by_model(
++        &mut self,
++        prefix: &str,
++        span: &str,
++        lctx: &str,
++        texts: Vec<String>,
++    ) -> Vec<String> {
++        let tails: Option<Vec<&str>> = texts.iter().map(|t| t.strip_prefix(prefix)).collect();
++        let Some(tails) = tails.filter(|t| t.len() > 1 && !span.is_empty()) else {
++            return texts;
++        };
++        let Some(scores) = self.model_scores(span, lctx, &tails) else {
++            return texts;
++        };
++        let mut ranked: Vec<(f32, String)> = scores.into_iter().zip(texts).collect();
++        ranked.sort_by(|a, b| b.0.total_cmp(&a.0));
++        ranked.into_iter().map(|(_, text)| text).collect()
 +    }
 +}
 +
 +/// The pure part of [`InputMethodEngine::word_swap_candidates`].
-+pub(crate) fn word_swaps(dicts: &[&Dictionary], reading: &str, sentence: &str) -> Vec<String> {
++pub(crate) fn word_swaps(
++    dicts: &[&Dictionary],
++    reading: &str,
++    sentence: &str,
++    skip_latin: bool,
++) -> Vec<String> {
 +    let r: Vec<char> = reading.chars().collect();
 +    let s: Vec<char> = sentence.chars().collect();
 +    if dicts.is_empty() || r.len() < MIN_WORD_CHARS || s.is_empty() {
@@ -951,7 +2039,11 @@ index 0000000..c7ee615
 +                    .iter()
 +                    .collect();
 +                for surface in surfaces.iter().take(MAX_SURFACES_PER_WORD) {
-+                    if *surface == spelled || !is_word(surface) || overlaps(&head, surface) {
++                    // mimiが好きです for みみがすきです: an English spelling of
++                    // one word is no better than of the whole reading.
++                    let latin = skip_latin && conversion::is_latin_only(surface);
++                    if *surface == spelled || latin || !is_word(surface) || overlaps(&head, surface)
++                    {
 +                        continue;
 +                    }
 +                    let candidate = format!("{head}{surface}{tail}");
@@ -1174,10 +2266,10 @@ index 0000000..1c4ceba
 +}
 diff --git a/karukan-im/core/src/core/engine/tests/exact_only.rs b/karukan-im/core/src/core/engine/tests/exact_only.rs
 new file mode 100644
-index 0000000..dd47e3e
+index 0000000..9fe46d1
 --- /dev/null
 +++ b/karukan-im/core/src/core/engine/tests/exact_only.rs
-@@ -0,0 +1,174 @@
+@@ -0,0 +1,194 @@
 +//! `prediction = false` and `alphabet_candidates = false`: only candidates
 +//! whose reading is the typed one, and no Latin-only dictionary surfaces
 +//! for a kana reading. ＠ lookups keep their English skill names.
@@ -1352,6 +2444,26 @@ index 0000000..dd47e3e
 +    }
 +    assert_eq!(e.preedit().unwrap().text(), "＠こいし");
 +}
++
++#[test]
++fn no_romaji_fragment_in_a_kana_readings_model_answers() {
++    use crate::core::engine::conversion::has_romaji_fragment;
++    assert!(has_romaji_fragment("mimiが好きです"));
++    assert!(has_romaji_fragment("macoら"));
++    assert!(!has_romaji_fragment("Tシャツ"));
++    assert!(!has_romaji_fragment("USBメモリ"));
++    assert!(!has_romaji_fragment("iPhone"));
++    assert!(!has_romaji_fragment("耳が好きです"));
++
++    let mut e = engine(
++        r#"[{"reading":"ん","candidates":[{"surface":"ン","score":0.0}]}]"#,
++        false,
++        false,
++    );
++    seed_model_cache(&mut e, "マコラ", "", &["macoら", "まこら"]);
++    let list = convert(&mut e, "makora");
++    assert!(!list.contains(&"macoら".to_string()), "{list:?}");
++}
 diff --git a/karukan-im/core/src/core/engine/tests/learning.rs b/karukan-im/core/src/core/engine/tests/learning.rs
 index e2b0062..2a728f5 100644
 --- a/karukan-im/core/src/core/engine/tests/learning.rs
@@ -1408,10 +2520,10 @@ index e2b0062..2a728f5 100644
 +    assert_eq!(first.text, "藍");
 +}
 diff --git a/karukan-im/core/src/core/engine/tests/mod.rs b/karukan-im/core/src/core/engine/tests/mod.rs
-index 098ad3e..835bee9 100644
+index 098ad3e..47411b5 100644
 --- a/karukan-im/core/src/core/engine/tests/mod.rs
 +++ b/karukan-im/core/src/core/engine/tests/mod.rs
-@@ -10,24 +10,30 @@ mod basic;
+@@ -10,24 +10,31 @@ mod basic;
  mod candidate_window;
  mod candidates;
  mod chunks;
@@ -1430,6 +2542,7 @@ index 098ad3e..835bee9 100644
  mod pending_romaji;
  mod persona;
  mod predictive;
++mod prefer;
  mod rewriter;
 +mod shared_dicts;
  mod single_kanji;
@@ -1442,7 +2555,7 @@ index 098ad3e..835bee9 100644
  
  /// Engine seeded with a learning entry `reading → surface`, no kanji model.
  /// Bypasses `init.rs` (which gates learning on settings + file I/O) and
-@@ -58,12 +64,12 @@ fn seed_model_cache(engine: &mut InputMethodEngine, katakana: &str, lctx: &str,
+@@ -58,12 +65,12 @@ fn seed_model_cache(engine: &mut InputMethodEngine, katakana: &str, lctx: &str,
  }
  
  /// Build a dictionary from inline JSON, hiding the temp-file plumbing.
@@ -1590,6 +2703,384 @@ index 0000000..144408d
 +    let result = engine.process_key(&press_ctrl(Keysym::MUHENKAN));
 +    assert!(!result.consumed);
 +    assert!(matches!(engine.state(), InputState::Composing { .. }));
++}
+diff --git a/karukan-im/core/src/core/engine/tests/prefer.rs b/karukan-im/core/src/core/engine/tests/prefer.rs
+new file mode 100644
+index 0000000..6e62440
+--- /dev/null
++++ b/karukan-im/core/src/core/engine/tests/prefer.rs
+@@ -0,0 +1,372 @@
++//! Learning judged in context, counters after a number, and learned words
++//! inside a sentence (see `engine::prefer`). The model is stood in for by
++//! the two caches: its conversions and its log-probabilities.
++
++use super::*;
++
++const SYSTEM: &str = r#"[
++    {"reading":"さい","candidates":[{"surface":"最","score":0.0},{"surface":"再","score":1.0},{"surface":"才","score":2.0},{"surface":"歳","score":3.0},{"surface":"際","score":4.0}]},
++    {"reading":"みみ","candidates":[{"surface":"耳","score":0.0},{"surface":"mimi","score":1.0}]}
++]"#;
++const COUNTERS: &str = r#"[
++    {"reading":"〈数〉さい","candidates":[{"surface":"歳","score":0.0}]},
++    {"reading":"〈数〉かい","candidates":[{"surface":"回","score":0.0},{"surface":"階","score":1.0}]}
++]"#;
++
++fn engine(learned: &[(&str, &str)]) -> InputMethodEngine {
++    let mut engine = InputMethodEngine::new();
++    engine.config.prediction = false;
++    engine.config.alphabet_candidates = false;
++    engine.dicts.system = Some(dict_from_json(SYSTEM));
++    engine.dicts.user = Some(dict_from_json(COUNTERS));
++    let mut cache = karukan_engine::LearningCache::new(Default::default());
++    for (reading, surface) in learned {
++        cache.record(reading, surface);
++    }
++    engine.learning = Some(cache);
++    engine
++}
++
++fn score(engine: &mut InputMethodEngine, reading: &str, lctx: &str, scores: &[(&str, f32)]) {
++    for (surface, value) in scores {
++        engine.score_cache.insert(
++            crate::core::engine::cache::ModelRole::Main,
++            reading,
++            lctx,
++            surface,
++            *value,
++        );
++    }
++}
++
++/// The model as measured on jinen-v2-small: さい alone, and after 18.
++fn seed_sai(engine: &mut InputMethodEngine) {
++    seed_model_cache(engine, "サイ", "", &["最"]);
++    seed_model_cache(engine, "サイ", "18", &["才"]);
++    score(
++        engine,
++        "さい",
++        "",
++        &[("最", -1.32), ("再", -1.32), ("歳", -7.06), ("才", -5.30)],
++    );
++    score(
++        engine,
++        "さい",
++        "18",
++        &[("才", -0.40), ("歳", -2.15), ("再", -3.54)],
++    );
++}
++
++/// みみ alone, after 今日は, and inside two sentences.
++fn seed_mimi(engine: &mut InputMethodEngine) {
++    seed_model_cache(engine, "ミミ", "", &["耳"]);
++    seed_model_cache(engine, "ミミ", "今日は", &["耳"]);
++    seed_model_cache(engine, "ミミガスキ", "", &["耳が好き"]);
++    seed_model_cache(engine, "ミミヲスマス", "", &["耳を澄ます"]);
++    score(engine, "みみ", "", &[("耳", -0.61), ("ミミ", -2.66)]);
++    score(engine, "みみ", "今日は", &[("耳", -0.27), ("ミミ", -2.32)]);
++    score(
++        engine,
++        "みみがすき",
++        "",
++        &[("耳が好き", -0.04), ("ミミが好き", -4.36)],
++    );
++    score(
++        engine,
++        "みみをすます",
++        "",
++        &[("耳を澄ます", -0.29), ("ミミを澄ます", -7.27)],
++    );
++}
++
++fn type_keys(engine: &mut InputMethodEngine, romaji: &str) {
++    for ch in romaji.chars() {
++        engine.process_key(&press(ch));
++    }
++}
++
++fn space(engine: &mut InputMethodEngine, romaji: &str) -> Vec<String> {
++    type_keys(engine, romaji);
++    engine.process_key(&press_key(Keysym::SPACE));
++    engine
++        .candidates()
++        .unwrap()
++        .candidates()
++        .iter()
++        .map(|c| c.text.clone())
++        .collect()
++}
++
++fn live(engine: &mut InputMethodEngine, romaji: &str) -> String {
++    engine.live.enabled = true;
++    type_keys(engine, romaji);
++    engine.preedit().unwrap().text().to_string()
++}
++
++fn learned(engine: &InputMethodEngine, reading: &str) -> Vec<String> {
++    engine
++        .learning
++        .as_ref()
++        .unwrap()
++        .lookup(reading)
++        .into_iter()
++        .map(|(surface, _)| surface)
++        .collect()
++}
++
++#[test]
++fn learning_leads_when_nothing_is_on_the_left() {
++    let mut e = engine(&[("さい", "再")]);
++    seed_sai(&mut e);
++    assert_eq!(space(&mut e, "sai")[0], "再");
++}
++
++#[test]
++fn live_conversion_shows_what_was_learned() {
++    let mut e = engine(&[("さい", "再")]);
++    seed_sai(&mut e);
++    assert_eq!(live(&mut e, "sai"), "再");
++}
++
++#[test]
++fn a_number_on_the_left_overrules_learning() {
++    // 18|さい: the model's margin against 再 grows by 3.1 once 18 is there.
++    let mut e = engine(&[("さい", "再")]);
++    e.dicts.user = None;
++    seed_sai(&mut e);
++    e.set_surrounding_context("18", "");
++    let list = space(&mut e, "sai");
++    assert_eq!(&list[..2], ["才", "再"], "{list:?}");
++}
++
++#[test]
++fn a_counter_leads_after_a_number() {
++    let mut e = engine(&[("さい", "再")]);
++    seed_sai(&mut e);
++    e.set_surrounding_context("18", "");
++    let list = space(&mut e, "sai");
++    assert_eq!(list[0], "歳", "{list:?}");
++    assert!(list.contains(&"再".to_string()), "{list:?}");
++}
++
++#[test]
++fn a_counter_leads_in_live_conversion_and_inside_the_composition() {
++    let mut e = engine(&[("さい", "再")]);
++    seed_sai(&mut e);
++    assert_eq!(live(&mut e, "18sai"), "18歳");
++    engine_space_first(&mut e, "18歳");
++}
++
++fn engine_space_first(e: &mut InputMethodEngine, expected: &str) {
++    e.process_key(&press_key(Keysym::SPACE));
++    let first = e.candidates().unwrap().candidates()[0].text.clone();
++    assert_eq!(first, expected);
++}
++
++#[test]
++fn several_counters_are_left_to_the_model() {
++    let mut e = engine(&[]);
++    seed_model_cache(&mut e, "カイ", "3", &["会"]);
++    score(&mut e, "かい", "3", &[("回", -0.72), ("階", -0.71)]);
++    e.set_surrounding_context("3", "");
++    assert_eq!(space(&mut e, "kai")[0], "階");
++}
++
++#[test]
++fn context_that_does_not_object_keeps_learning() {
++    let mut e = engine(&[("みみ", "ミミ")]);
++    seed_mimi(&mut e);
++    e.set_surrounding_context("今日は", "");
++    assert_eq!(space(&mut e, "mimi")[0], "ミミ");
++}
++
++#[test]
++fn a_choice_after_a_number_is_kept_apart() {
++    let mut e = engine(&[("さい", "再")]);
++    e.dicts.user = None;
++    seed_sai(&mut e);
++    e.set_surrounding_context("18", "");
++    // 才, 再, then pick 歳 from the list and commit it.
++    let list = space(&mut e, "sai");
++    let at = list.iter().position(|t| t == "歳").unwrap();
++    for _ in 0..at {
++        e.process_key(&press_key(Keysym::SPACE));
++    }
++    e.process_key(&press_key(Keysym::RETURN));
++    assert_eq!(learned(&e, "〈数〉さい"), ["歳"]);
++    assert_eq!(learned(&e, "さい"), ["再"]);
++
++    // After another number it leads; alone, さい is still 再.
++    e.set_surrounding_context("20", "");
++    seed_model_cache(&mut e, "サイ", "20", &["才"]);
++    assert_eq!(space(&mut e, "sai")[0], "歳");
++    e.process_key(&press_key(Keysym::ESCAPE));
++    e.process_key(&press_key(Keysym::ESCAPE));
++    e.set_surrounding_context("", "");
++    assert_eq!(space(&mut e, "sai")[0], "再");
++}
++
++#[test]
++fn a_number_typed_with_its_counter_is_learned_without_the_number() {
++    let mut e = engine(&[]);
++    e.dicts.user = None;
++    seed_sai(&mut e);
++    let list = space(&mut e, "18sai");
++    let at = list
++        .iter()
++        .position(|t| t == "18歳")
++        .expect("18歳 in the list");
++    for _ in 0..at {
++        e.process_key(&press_key(Keysym::SPACE));
++    }
++    e.process_key(&press_key(Keysym::RETURN));
++    assert_eq!(learned(&e, "〈数〉さい"), ["歳"]);
++    assert!(learned(&e, "18さい").is_empty());
++    seed_model_cache(&mut e, "サイ", "20", &["才"]);
++    assert_eq!(space(&mut e, "20sai")[0], "20歳");
++}
++
++#[test]
++fn a_learned_word_is_used_inside_a_sentence() {
++    let mut e = engine(&[("みみ", "ミミ")]);
++    seed_mimi(&mut e);
++    assert_eq!(live(&mut e, "mimigasuki"), "ミミが好き");
++    e.process_key(&press_key(Keysym::SPACE));
++    let list: Vec<String> = e
++        .candidates()
++        .unwrap()
++        .candidates()
++        .iter()
++        .map(|c| c.text.clone())
++        .collect();
++    assert_eq!(&list[..2], ["ミミが好き", "耳が好き"], "{list:?}");
++}
++
++#[test]
++fn a_sentence_that_objects_keeps_the_models_word() {
++    let mut e = engine(&[("みみ", "ミミ")]);
++    seed_mimi(&mut e);
++    assert_eq!(live(&mut e, "mimiwosumasu"), "耳を澄ます");
++    e.process_key(&press_key(Keysym::SPACE));
++    let list: Vec<String> = e
++        .candidates()
++        .unwrap()
++        .candidates()
++        .iter()
++        .map(|c| c.text.clone())
++        .collect();
++    assert_eq!(&list[..2], ["耳を澄ます", "ミミを澄ます"], "{list:?}");
++}
++
++#[test]
++fn a_word_inside_a_compound_is_left_alone() {
++    // 最 in 最高 is not the さい that was learned as 再.
++    let mut e = engine(&[("さい", "再")]);
++    seed_sai(&mut e);
++    seed_model_cache(&mut e, "サイコウ", "", &["最高"]);
++    let list = space(&mut e, "saikou");
++    assert_eq!(list[0], "最高");
++    assert!(!list.iter().any(|t| t == "再高"), "{list:?}");
++}
++
++#[test]
++fn kana_inside_kana_is_left_alone() {
++    let mut e = engine(&[("さい", "再")]);
++    seed_sai(&mut e);
++    seed_model_cache(&mut e, "クダサイネ", "", &["くださいね"]);
++    assert_eq!(live(&mut e, "kudasaine"), "くださいね");
++}
++
++#[test]
++fn a_counter_opens_a_longer_reading() {
++    let mut e = engine(&[]);
++    seed_model_cache(&mut e, "サイノトキ", "18", &["才のとき"]);
++    e.set_surrounding_context("18", "");
++    assert_eq!(live(&mut e, "sainotoki"), "歳のとき");
++}
++
++#[test]
++fn live_text_committed_unchosen_is_not_learned() {
++    let mut e = engine(&[]);
++    seed_sai(&mut e);
++    assert_eq!(live(&mut e, "sai"), "最");
++    e.process_key(&press_key(Keysym::RETURN));
++    assert!(learned(&e, "さい").is_empty());
++}
++
++#[test]
++fn an_unchosen_commit_refreshes_what_is_already_learned() {
++    let mut e = engine(&[("さい", "再")]);
++    seed_sai(&mut e);
++    assert_eq!(live(&mut e, "sai"), "再");
++    e.process_key(&press_key(Keysym::RETURN));
++    assert_eq!(learned(&e, "さい"), ["再"]);
++    let count = e.learning.as_ref().unwrap().entry_count();
++    assert_eq!(count, 1);
++}
++
++#[test]
++fn a_learned_counter_can_be_deleted() {
++    let mut e = engine(&[("〈数〉さい", "才")]);
++    seed_sai(&mut e);
++    e.set_surrounding_context("18", "");
++    assert_eq!(space(&mut e, "sai")[0], "才");
++    e.process_key(&press_ctrl(Keysym::BACKSPACE));
++    assert!(learned(&e, "〈数〉さい").is_empty());
++}
++
++#[test]
++fn no_english_spelling_of_one_word() {
++    let mut e = engine(&[]);
++    seed_mimi(&mut e);
++    let list = space(&mut e, "mimigasuki");
++    assert!(!list.iter().any(|t| t.contains("mimi")), "{list:?}");
++}
++
++#[test]
++fn respellings_are_ranked_by_the_model() {
++    let json = r#"[{"reading":"たび","candidates":[{"surface":"旅","score":0.0},{"surface":"足袋","score":1.0},{"surface":"度","score":2.0}]}]"#;
++    let mut e = engine(&[]);
++    e.dicts.system = Some(dict_from_json(json));
++    seed_model_cache(&mut e, "ソノタビニ", "", &["その旅に"]);
++    score(
++        &mut e,
++        "そのたびに",
++        "",
++        &[("その足袋に", -9.0), ("その度に", -0.5)],
++    );
++    let list = space(&mut e, "sonotabini");
++    assert_eq!(
++        &list[..3],
++        ["その旅に", "その度に", "その足袋に"],
++        "{list:?}"
++    );
++}
++
++#[test]
++fn a_wide_margin_in_context_is_not_excused_by_a_wide_margin_without() {
++    // A kanji-leaning persona: ミミ trails 耳 by 4.9 even alone, so the
++    // growth to 6.9 inside the sentence looks small. It is still too far.
++    let mut e = engine(&[("みみ", "ミミ")]);
++    seed_model_cache(&mut e, "ミミ", "", &["耳"]);
++    seed_model_cache(&mut e, "ミミヲスマス", "", &["耳をすます"]);
++    score(&mut e, "みみ", "", &[("耳", -0.02), ("ミミ", -4.90)]);
++    score(
++        &mut e,
++        "みみをすます",
++        "",
++        &[("耳をすます", -0.44), ("ミミをすます", -7.29)],
++    );
++    assert_eq!(live(&mut e, "mimiwosumasu"), "耳をすます");
++}
++
++#[test]
++fn space_starts_from_the_text_on_screen() {
++    // Live conversion showed one model answer, the list leads with another.
++    let mut e = engine(&[]);
++    seed_model_cache(&mut e, "ミミヲスマス", "", &["耳をすます", "耳を澄ます"]);
++    e.live.enabled = true;
++    type_keys(&mut e, "mimiwosumasu");
++    set_live_text(&mut e, "耳を澄ます");
++    engine_space_first(&mut e, "耳を澄ます");
 +}
 diff --git a/karukan-im/core/src/core/engine/tests/rewriter.rs b/karukan-im/core/src/core/engine/tests/rewriter.rs
 index f0a85c5..8ba85d0 100644
@@ -1771,7 +3262,7 @@ index 0000000..4caff15
 +}
 diff --git a/karukan-im/core/src/core/engine/tests/word_swap.rs b/karukan-im/core/src/core/engine/tests/word_swap.rs
 new file mode 100644
-index 0000000..b952572
+index 0000000..57e5588
 --- /dev/null
 +++ b/karukan-im/core/src/core/engine/tests/word_swap.rs
 @@ -0,0 +1,61 @@
@@ -1794,7 +3285,7 @@ index 0000000..b952572
 +#[test]
 +fn swaps_the_word_before_the_shared_kana_tail() {
 +    let d = dict();
-+    let out = word_swaps(&[&d], "なになにのたびに", "何々の旅に");
++    let out = word_swaps(&[&d], "なになにのたびに", "何々の旅に", false);
 +    assert_eq!(
 +        out[..2],
 +        ["何々の度に".to_string(), "何々の足袋に".to_string()]
@@ -1804,22 +3295,22 @@ index 0000000..b952572
 +#[test]
 +fn spells_a_kana_word_with_the_dictionary() {
 +    let d = dict();
-+    let out = word_swaps(&[&d], "できていない", "できていない");
++    let out = word_swaps(&[&d], "できていない", "できていない", false);
 +    assert_eq!(out.first().map(String::as_str), Some("出来ていない"));
 +}
 +
 +#[test]
 +fn leaves_one_char_readings_alone() {
 +    let d = dict();
-+    let out = word_swaps(&[&d], "なになにのたびに", "何々の旅に");
++    let out = word_swaps(&[&d], "なになにのたびに", "何々の旅に", false);
 +    assert!(!out.iter().any(|c| c.contains('二')), "{out:?}");
 +}
 +
 +#[test]
 +fn nothing_when_the_sentence_does_not_spell_the_word() {
 +    let d = dict();
-+    assert!(word_swaps(&[&d], "たびに", "TABIに").is_empty());
-+    assert!(word_swaps(&[], "たびに", "旅に").is_empty());
++    assert!(word_swaps(&[&d], "たびに", "TABIに", false).is_empty());
++    assert!(word_swaps(&[], "たびに", "旅に", false).is_empty());
 +}
 +
 +#[test]
@@ -1830,10 +3321,10 @@ index 0000000..b952572
 +            {"reading":"えんたく","candidates":[{"surface":"円卓","score":1.0},{"surface":"円卓（円卓）","score":2.0},{"surface":"円タク","score":3.0}]}
 +        ]"#,
 +    );
-+    let out = word_swaps(&[&d], "すなおおかみしろこ", "砂狼シロコ");
++    let out = word_swaps(&[&d], "すなおおかみしろこ", "砂狼シロコ", false);
 +    assert!(out.contains(&"砂狼白子".to_string()), "{out:?}");
 +    assert!(!out.iter().any(|c| c.contains("砂狼砂狼")), "{out:?}");
-+    let out = word_swaps(&[&d], "えんたく", "円卓");
++    let out = word_swaps(&[&d], "えんたく", "円卓", false);
 +    assert_eq!(out, ["円タク".to_string()]);
 +}
 diff --git a/karukan-im/core/src/core/engine/types.rs b/karukan-im/core/src/core/engine/types.rs
@@ -1934,6 +3425,9 @@ cat > PKGBUILD <<'PKGBUILD_EOF'
 #   - [conversion] prediction / alphabet_candidates: exact readings only, no
 #     Latin-only candidates for kana (shipped default: both off)
 #   - ＠ character lookups (＠こいし): the dictionary's list, no model output
+#   - learning judged in context by the model's own log-probabilities, used in
+#     live conversion and inside sentences; counters after a number (18さい → 18歳);
+#     unchosen commits are no longer learned; word swaps ranked by the model
 # Based on the AUR karukan-git PKGBUILD by koh11235813.
 pkgname=karukan-kz-git
 pkgver=0
@@ -1956,6 +3450,10 @@ b2sums=('SKIP'
 # The upstream commit this patch was written and tested against. When the
 # patch no longer applies to the newest upstream, this commit is built.
 _tested=185482700749fd15e58555c331b4e01ce5257344
+
+# Revision of the karukan-kz patch itself; it ends the package version
+# (…kz5), so `pacman -Q karukan-kz-git` tells which patch is installed.
+_kzrev=5
 
 # Upstream layout, relative to the repository root
 _crate="karukan-im/fcitx5"
@@ -1983,11 +3481,11 @@ pkgver() {
     cd "$srcdir/karukan"
     local desc cargo_ver=""
     if desc=$(git describe --long --abbrev=7 2>/dev/null); then
-        printf '%s.kz' "$desc" | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
+        printf '%s.kz%s' "$desc" "$_kzrev" | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
     else
         [[ -f $_crate/Cargo.toml ]] &&
             cargo_ver=$(grep -m1 '^version' "$_crate/Cargo.toml" | cut -d'"' -f2)
-        printf '%sr%s.g%s.kz' "${cargo_ver:+$cargo_ver.}" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+        printf '%sr%s.g%s.kz%s' "${cargo_ver:+$cargo_ver.}" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)" "$_kzrev"
     fi
 }
 
@@ -2013,6 +3511,8 @@ check() {
         core::engine::tests::word_swap \
         core::engine::tests::muhenkan \
         core::engine::tests::exact_only \
+        core::engine::tests::prefer \
+        core::engine::prefer::tests \
         config::settings::tests::test_exact_only_defaults_and_override \
         core::engine::tests::learning::exact_learning_still_comes_first \
         core::engine::tests::learning::ctrl_delete_removes_prefix_matched_entry_by_full_reading \
