@@ -58,9 +58,9 @@ if (( ${#missing[@]} )); then
 fi
 
 # --- 2. パッチ入り Karukan ----------------------------------------------------
-# このフォルダのパッチは第 KZ_REV 版です。入っている Karukan の版の終わり（…kz6-1 の 6）が
+# このフォルダのパッチは第 KZ_REV 版です。入っている Karukan の版の終わり（…kz7-1 の 7）が
 # 違うときは、--update を付けなくても入れ直します。
-readonly KZ_REV=6
+readonly KZ_REV=7
 installed=$(pacman -Q karukan-kz-git 2>/dev/null || true)
 if (( update )) || [[ $installed != *.kz${KZ_REV}-* ]]; then
     say "パッチ入りの Karukan（パッチ第 ${KZ_REV} 版）を入れます"
