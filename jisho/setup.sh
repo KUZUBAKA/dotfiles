@@ -58,9 +58,9 @@ if (( ${#missing[@]} )); then
 fi
 
 # --- 2. パッチ入り Karukan ----------------------------------------------------
-# このフォルダのパッチは第 KZ_REV 版です。入っている Karukan の版の終わり（…kz7-1 の 7）が
+# このフォルダのパッチは第 KZ_REV 版です。入っている Karukan の版の終わり（…kz8-1 の 8）が
 # 違うときは、--update を付けなくても入れ直します。
-readonly KZ_REV=7
+readonly KZ_REV=8
 installed=$(pacman -Q karukan-kz-git 2>/dev/null || true)
 if (( update )) || [[ $installed != *.kz${KZ_REV}-* ]]; then
     say "パッチ入りの Karukan（パッチ第 ${KZ_REV} 版）を入れます"
@@ -86,14 +86,14 @@ fi
 [[ $(head -c 4 cache/dict.bin) == KRKN ]] || die "ダウンロードした辞書が壊れています。bash setup.sh --refresh でやり直してください。"
 
 # Rebuild only when an input (or the dictionary tool) changed.
-stamp=$( { sha256sum cache/dict.bin system/top.tsv system/additions.tsv.xz tools/merge_system_dict.py
+stamp=$( { sha256sum cache/dict.bin system/top.tsv system/additions.tsv.xz system/freq.tsv.xz tools/merge_system_dict.py
            pacman -Q karukan-kz-git; } | sha256sum | cut -d' ' -f1 )
 if [[ -f out/dict.bin && -f out/dict.stamp && $(<out/dict.stamp) == "$stamp" ]]; then
     say "システム辞書は作成済みです（材料が変わっていないので作り直しません）"
 else
     say "システム辞書を組み立てています（1〜2分かかります）"
     rm -f out/dict.stamp
-    python3 tools/merge_system_dict.py cache/dict.bin system/top.tsv system/additions.tsv.xz cache/merged.json
+    python3 tools/merge_system_dict.py cache/dict.bin system/top.tsv system/additions.tsv.xz cache/merged.json system/freq.tsv.xz
     karukan-dict build cache/merged.json -o out/dict.bin.new >/dev/null
     rm -f cache/merged.json
     mv -f out/dict.bin.new out/dict.bin
@@ -132,7 +132,9 @@ check=$(karukan-dict view "$DATA/dict.bin" -q ごじょう 2>/dev/null) || true
 [[ $check == *五条悟* ]] || die "登録したシステム辞書を読めませんでした。"
 check=$(karukan-dict view "$USER_DICTS"/*.txt -q ごじょうさとる 2>/dev/null) || true
 [[ $check == *五条悟* ]] || die "登録したユーザー辞書を読めませんでした。"
-say "辞書の読み込みを確かめました（ごじょう → 五条悟 など）"
+check=$(karukan-dict view "$DATA/dict.bin" -q 〈仮名〉から 2>/dev/null) || true
+[[ $check == *から* ]] || die "システム辞書に「かなのまま書く言葉の印」が入っていません。bash setup.sh --refresh でやり直してください。"
+say "辞書の読み込みを確かめました（ごじょう → 五条悟、〈仮名〉から など）"
 
 # --- 6. Fcitx5 を再起動する ----------------------------------------------------
 # On Plasma (Wayland) KWin launches Fcitx5 from the virtual keyboard setting
@@ -164,6 +166,8 @@ fi
 cat <<DONE
 
   完了しました。最初の1文字を打つときだけ、辞書の読み込みで少し待ちます。
+  パッチ第8版から AI のモデルが新しい種類（Q8_0、約 117MB）に変わったので、最初の変換のときに
+  一度だけ自動でダウンロードされます（終わるまでの数十秒は、ひらがなと辞書の候補だけが出ます）。
 
   登録した場所: $DATA
     dict.bin                 システム辞書

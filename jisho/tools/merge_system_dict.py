@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Merge the official Karukan system dictionary with the karukan-kz additions.
 
-Usage: merge_system_dict.py OFFICIAL_DICT_BIN TOP_TSV ADDITIONS_TSV[.xz] OUT_JSON
+Usage: merge_system_dict.py OFFICIAL_DICT_BIN TOP_TSV ADDITIONS_TSV[.xz] OUT_JSON [FREQ_TSV[.xz]]
 
   OFFICIAL_DICT_BIN  dict.bin from https://github.com/togatoga/karukan/releases
   TOP_TSV            reading<TAB>surface<TAB>note — work terms that must come
@@ -10,6 +10,14 @@ Usage: merge_system_dict.py OFFICIAL_DICT_BIN TOP_TSV ADDITIONS_TSV[.xz] OUT_JSO
   ADDITIONS_TSV      reading<TAB>surface<TAB>cost<TAB>source — new words,
                      placed after the official candidates of the same reading
   OUT_JSON           input for: karukan-dict build OUT_JSON -o dict.bin
+
+  FREQ_TSV           reading<TAB>surface<TAB>cost — Mozc's word costs. With it,
+                     the candidates of a reading that Mozc knows come first, the
+                     most frequent first, with Mozc's cost as their score (the
+                     engine reads it as how common the word is); the others
+                     follow in the order described above, from 20000 up.
+                     Rows whose reading starts with 〈仮名〉 mark kana that is a
+                     function word (から, ます); they become entries of their own.
 
 Scores are costs (lower = earlier), on the official dictionary's scale.
 """
@@ -57,6 +65,8 @@ def read_krkn(path):
     return entries
 
 
+KANA_MARK = '〈仮名〉'
+
 DECORATION = set('…‥!！?？☆★♪♡♥〜~「」『』【】()（）<>＜＞*＊#＃^＾　 ')
 
 
@@ -69,9 +79,17 @@ def open_text(path):
 
 
 def main():
-    if len(sys.argv) != 5:
+    if len(sys.argv) not in (5, 6):
         sys.exit(__doc__)
-    official_path, top_path, add_path, out_path = sys.argv[1:]
+    official_path, top_path, add_path, out_path = sys.argv[1:5]
+    freq = collections.defaultdict(dict)
+    if len(sys.argv) == 6:
+        with open_text(sys.argv[5]) as f:
+            for line in f:
+                if line.startswith('#') or not line.strip():
+                    continue
+                r, s, cost = line.rstrip('\n').split('\t')[:3]
+                freq[r][s] = int(cost)
     dict_entries = read_krkn(official_path)
     print(f'official: {len(dict_entries)} readings', file=sys.stderr)
 
@@ -92,12 +110,18 @@ def main():
             r, s, cost, source = line.rstrip('\n').split('\t')[:4]
             add[r].append((s, int(cost), SOURCE_RANK.get(source, len(SOURCE_RANK))))
 
-    readings = set(dict_entries) | set(top) | set(add)
+    marks = {r for r in freq if r.startswith(KANA_MARK)}
+    readings = set(dict_entries) | set(top) | set(add) | marks
     raised = appended = new_readings = 0
     with open(out_path, 'w', encoding='utf-8') as out:
         out.write('[')
         first = True
         for r in sorted(readings, key=lambda x: x.encode()):
+            if r in marks:
+                obj = {'reading': r, 'candidates': [{'surface': s, 'score': float(c)} for s, c in freq[r].items()]}
+                out.write(('' if first else ',') + '\n' + json.dumps(obj, ensure_ascii=False))
+                first = False
+                continue
             existing = dict_entries.get(r, [])
             lifted = top.get(r, [])
             lifted_set = set(lifted)
@@ -129,6 +153,13 @@ def main():
                         cands.append((s, 9000.0 + 200 * rank + i))
                     new_readings += 1
                     appended += len(extra)
+            # Mozc's word costs: what it knows leads, the most frequent first.
+            known_cost = freq.get(r)
+            if freq:
+                common = sorted(((s, known_cost[s]) for s, _ in cands if known_cost and s in known_cost),
+                                key=lambda c: c[1])
+                others = [s for s, _ in cands if not (known_cost and s in known_cost)]
+                cands = common + [(s, 20000.0 + i) for i, s in enumerate(others)]
             # The format stores at most 65535 candidates per reading.
             cands = cands[:65535]
             obj = {'reading': r, 'candidates': [{'surface': s, 'score': float(sc)} for s, sc in cands]}
