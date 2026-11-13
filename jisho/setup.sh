@@ -58,9 +58,9 @@ if (( ${#missing[@]} )); then
 fi
 
 # --- 2. パッチ入り Karukan ----------------------------------------------------
-# このフォルダのパッチは第 KZ_REV 版です。入っている Karukan の版の終わり（…kz8-1 の 8）が
+# このフォルダのパッチは第 KZ_REV 版です。入っている Karukan の版の終わり（…kz9-1 の 9）が
 # 違うときは、--update を付けなくても入れ直します。
-readonly KZ_REV=8
+readonly KZ_REV=9
 installed=$(pacman -Q karukan-kz-git 2>/dev/null || true)
 if (( update )) || [[ $installed != *.kz${KZ_REV}-* ]]; then
     say "パッチ入りの Karukan（パッチ第 ${KZ_REV} 版）を入れます"
@@ -134,7 +134,9 @@ check=$(karukan-dict view "$USER_DICTS"/*.txt -q ごじょうさとる 2>/dev/nu
 [[ $check == *五条悟* ]] || die "登録したユーザー辞書を読めませんでした。"
 check=$(karukan-dict view "$DATA/dict.bin" -q 〈仮名〉から 2>/dev/null) || true
 [[ $check == *から* ]] || die "システム辞書に「かなのまま書く言葉の印」が入っていません。bash setup.sh --refresh でやり直してください。"
-say "辞書の読み込みを確かめました（ごじょう → 五条悟、〈仮名〉から など）"
+check=$(karukan-dict view "$DATA/dict.bin" -q 〈活〉はなせ 2>/dev/null) || true
+[[ $check == *話せ* ]] || die "システム辞書に「活用した形」が入っていません。bash setup.sh --refresh でやり直してください。"
+say "辞書の読み込みを確かめました（ごじょう → 五条悟、〈仮名〉から、〈活〉はなせ など）"
 
 # --- 6. Fcitx5 を再起動する ----------------------------------------------------
 # On Plasma (Wayland) KWin launches Fcitx5 from the virtual keyboard setting
@@ -166,8 +168,8 @@ fi
 cat <<DONE
 
   完了しました。最初の1文字を打つときだけ、辞書の読み込みで少し待ちます。
-  パッチ第8版から AI のモデルが新しい種類（Q8_0、約 117MB）に変わったので、最初の変換のときに
-  一度だけ自動でダウンロードされます（終わるまでの数十秒は、ひらがなと辞書の候補だけが出ます）。
+  パッチ第8版から AI のモデルが新しい種類（Q8_0、約 117MB）に変わりました。まだ持っていないときは、
+  最初の変換のときに一度だけ自動でダウンロードされます（終わるまでの数十秒は、ひらがなと辞書の候補だけが出ます）。
 
   登録した場所: $DATA
     dict.bin                 システム辞書

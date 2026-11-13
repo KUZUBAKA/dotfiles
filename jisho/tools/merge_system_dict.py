@@ -16,8 +16,9 @@ Usage: merge_system_dict.py OFFICIAL_DICT_BIN TOP_TSV ADDITIONS_TSV[.xz] OUT_JSO
                      most frequent first, with Mozc's cost as their score (the
                      engine reads it as how common the word is); the others
                      follow in the order described above, from 20000 up.
-                     Rows whose reading starts with 〈仮名〉 mark kana that is a
-                     function word (から, ます); they become entries of their own.
+                     Rows whose reading starts with 〈 are marks — 〈仮名〉 for kana
+                     that is a function word (から, ます), 〈活〉 for a conjugated
+                     form (話せ) — and become entries of their own.
 
 Scores are costs (lower = earlier), on the official dictionary's scale.
 """
@@ -65,7 +66,8 @@ def read_krkn(path):
     return entries
 
 
-KANA_MARK = '〈仮名〉'
+# 〈仮名〉 marks kana that is a function word, 〈活〉 a conjugated form.
+MARK = '〈'
 
 DECORATION = set('…‥!！?？☆★♪♡♥〜~「」『』【】()（）<>＜＞*＊#＃^＾　 ')
 
@@ -110,7 +112,7 @@ def main():
             r, s, cost, source = line.rstrip('\n').split('\t')[:4]
             add[r].append((s, int(cost), SOURCE_RANK.get(source, len(SOURCE_RANK))))
 
-    marks = {r for r in freq if r.startswith(KANA_MARK)}
+    marks = {r for r in freq if r.startswith(MARK)}
     readings = set(dict_entries) | set(top) | set(add) | marks
     raised = appended = new_readings = 0
     with open(out_path, 'w', encoding='utf-8') as out:
@@ -118,7 +120,7 @@ def main():
         first = True
         for r in sorted(readings, key=lambda x: x.encode()):
             if r in marks:
-                obj = {'reading': r, 'candidates': [{'surface': s, 'score': float(c)} for s, c in freq[r].items()]}
+                obj = {'reading': r, 'candidates': [{'surface': s, 'score': float(c)} for s, c in sorted(freq[r].items(), key=lambda x: x[1])]}
                 out.write(('' if first else ',') + '\n' + json.dumps(obj, ensure_ascii=False))
                 first = False
                 continue
