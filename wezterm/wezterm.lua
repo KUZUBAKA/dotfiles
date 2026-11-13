@@ -111,6 +111,11 @@ config.keys = {
   mods = "SHIFT",
   action = wezterm.action.SendKey({ key = " ", mods = "SHIFT" }),
  },
+ {
+  key = 'raw:49',
+  mods = 'SHIFT',
+  action = wezterm.action.Nop
+ }
 }
 
 return config
